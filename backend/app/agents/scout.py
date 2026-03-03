@@ -605,15 +605,10 @@ class ScoutAgent:
         canonical_link = self._canonicalize_url(raw_link)
         link = canonical_link or raw_link
         published_at = self._extract_entry_datetime(entry)
-<<<<<<< Updated upstream
         used_url_date_fallback = False
         if not published_at and settings.scout_allow_url_date_fallback:
             published_at = self._extract_datetime_from_url(link)
             used_url_date_fallback = published_at is not None
-=======
-        if not published_at and settings.scout_allow_url_date_fallback:
-            published_at = self._extract_datetime_from_url(link)
->>>>>>> Stashed changes
 
         if settings.scout_ingest_filters_enabled and self._is_blocked_source_entry(source.name, link):
             stats["duplicates"] += 1
