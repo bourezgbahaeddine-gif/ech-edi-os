@@ -6,13 +6,14 @@ import {
     AlertTriangle,
     Bot,
     CheckCircle2,
+    Database,
     ExternalLink,
     Loader2,
     Play,
     RefreshCw,
     ShieldCheck,
 } from 'lucide-react';
-import { dashboardApi, jobsApi, type QueueSlaItem } from '@/lib/api';
+import { dashboardApi, jobsApi, type QueueSlaItem, type SystemMonitorResponse } from '@/lib/api';
 import PipelineMonitor from '@/components/dashboard/PipelineMonitor';
 import { formatRelativeTime } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -60,6 +61,13 @@ export default function AgentsPage() {
         queryFn: () => jobsApi.getSla({ lookback_hours: 24 }),
         enabled: isDirector,
         refetchInterval: 15000,
+    });
+
+    const { data: systemData, isLoading: systemLoading } = useQuery({
+        queryKey: ['system-monitor'],
+        queryFn: () => dashboardApi.systemMonitor(),
+        enabled: isDirector,
+        refetchInterval: 20000,
     });
 
     const runEmergencyAction = useMutation({
@@ -130,6 +138,19 @@ export default function AgentsPage() {
             (b.oldest_task_age || 0) - (a.oldest_task_age || 0)
     )[0];
 
+    const system = systemData?.data as SystemMonitorResponse | undefined;
+    const dbInfo = system?.database;
+    const vectorInfo = system?.vector;
+    const sectionItems = system?.sections || [];
+
+    const formatBytes = (value?: number) => {
+        const bytes = Number(value || 0);
+        if (!bytes) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+        return `${(bytes / 1024 ** exp).toFixed(1)} ${units[exp]}`;
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -174,6 +195,65 @@ export default function AgentsPage() {
                     <p className="text-2xl font-semibold text-white mt-1">{failedJobs.length}</p>
                 </div>
             </div>
+
+            <section className="rounded-2xl border border-white/10 bg-gray-900/50 p-4 space-y-4">
+                <div className="flex items-center gap-2 text-white">
+                    <Database className="w-5 h-5 text-cyan-300" />
+                    <h2 className="text-sm font-semibold">مراقبة قواعد البيانات والمتجهات</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <p className="text-[11px] text-gray-300">قاعدة البيانات</p>
+                        <p className="text-sm text-white mt-1">
+                            {systemLoading ? '...' : dbInfo?.status || 'unknown'}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            زمن الاستجابة: {systemLoading ? '...' : `${dbInfo?.latency_ms ?? '—'} ms`}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            الحجم: {systemLoading ? '...' : formatBytes(dbInfo?.size_bytes)}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <p className="text-[11px] text-gray-300">القاعدة المتجهية</p>
+                        <p className="text-sm text-white mt-1">
+                            {systemLoading ? '...' : `${vectorInfo?.vectors_count ?? 0} متجه`}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            تغطية: {systemLoading ? '...' : `${vectorInfo?.coverage_percent ?? 0}%`}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            آخر تحديث: {vectorInfo?.vectors_last_update ? formatRelativeTime(vectorInfo.vectors_last_update) : '—'}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <p className="text-[11px] text-gray-300">الطوابير</p>
+                        <p className="text-sm text-white mt-1">
+                            {systemLoading ? '...' : `${system?.queues?.total_depth ?? 0} مهمة`}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            Redis: {systemLoading ? '...' : system?.redis?.connected ? 'متصل' : 'غير متصل'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {sectionItems.map((item) => (
+                        <div key={item.key} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs text-gray-200">{item.label}</p>
+                                <span className="text-[10px] text-gray-400">{item.count}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-1">
+                                آخر تحديث: {item.last_update ? formatRelativeTime(item.last_update) : '—'}
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-1">
+                                عمر البيانات: {item.age_minutes !== null && item.age_minutes !== undefined ? `${item.age_minutes} دقيقة` : '—'}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            </section>
 
             <section className="rounded-2xl border border-white/10 bg-gray-900/50 p-4 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
