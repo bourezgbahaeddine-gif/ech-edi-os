@@ -1972,6 +1972,11 @@ export interface DigitalPostVersionListResponse {
     total: number;
 }
 
+export interface SocialPostListResponse {
+    items: DigitalPost[];
+    total: number;
+}
+
 export interface DigitalPostCompareResponse {
     post_id: number;
     base_version_no: number;
