@@ -145,6 +145,13 @@ const navItems: NavItem[] = [
         section: 'primary',
     },
     {
+        href: '/digital',
+        label: 'التغطية الرقمية',
+        icon: Megaphone,
+        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'],
+        section: 'primary',
+    },
+    {
         href: '/archive',
         label: 'الأرشيف',
         icon: Archive,
@@ -164,13 +171,6 @@ const navItems: NavItem[] = [
         icon: Archive,
         roles: ['director'],
         section: 'knowledge',
-    },
-    {
-        href: '/digital',
-        label: 'التغطية الرقمية',
-        icon: Megaphone,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'],
-        section: 'tools',
     },
     {
         href: '/constitution',

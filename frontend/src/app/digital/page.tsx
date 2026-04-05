@@ -131,6 +131,13 @@ function parseHashtags(raw: string): string[] {
         .filter(Boolean);
 }
 
+function buildImageText(text: string): string {
+    const clean = (text || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return '';
+    const words = clean.split(' ').slice(0, 8);
+    return words.join(' ');
+}
+
 function platformComposeUrl(platform: string): string {
     const key = normalizePlatform(platform);
     if (key === 'x') return 'https://x.com/compose/post';
@@ -523,10 +530,13 @@ export default function DigitalPage() {
     const [postHashtags, setPostHashtags] = useState('');
     const [postScheduledAt, setPostScheduledAt] = useState('');
     const [quickTitle, setQuickTitle] = useState('');
-    const [quickCaption, setQuickCaption] = useState('');
+    const [quickSourceText, setQuickSourceText] = useState('');
+    const [quickPreviewCaption, setQuickPreviewCaption] = useState('');
     const [quickHashtags, setQuickHashtags] = useState('');
     const [quickPlatforms, setQuickPlatforms] = useState<string[]>(['facebook']);
     const [quickGenerated, setQuickGenerated] = useState<Record<string, { text: string; hashtags: string[] }>>({});
+    const [quickImageTexts, setQuickImageTexts] = useState<Record<string, string>>({});
+    const [quickTaskId, setQuickTaskId] = useState<number | null>(null);
     const [quickTaskType, setQuickTaskType] = useState('');
     const [coveragePack, setCoveragePack] = useState<DigitalComposeResult['coverage_pack'] | null>(null);
 
@@ -534,6 +544,9 @@ export default function DigitalPage() {
         setChannel(desk);
         setTaskChannel(desk);
         setQuickTaskType('');
+        setQuickGenerated({});
+        setQuickImageTexts({});
+        setQuickTaskId(null);
     }, [desk]);
 
     const [scopeUserId, setScopeUserId] = useState('');
@@ -602,6 +615,12 @@ export default function DigitalPage() {
         enabled: canManage,
     });
 
+    const archivePostsQuery = useQuery({
+        queryKey: ['digital-archive-posts', desk],
+        queryFn: () => digitalApi.listPosts({ channel: desk, status: 'ready,approved', limit: 24 }),
+        enabled: canRead,
+    });
+
     const playbooksQuery = useQuery({
         queryKey: ['digital-playbooks'],
         queryFn: () => digitalApi.playbooks(),
@@ -637,6 +656,10 @@ export default function DigitalPage() {
     });
 
     const tasks = useMemo(() => (tasksQuery.data?.data?.items || []) as DigitalTask[], [tasksQuery.data?.data?.items]);
+    const archivePosts = useMemo(
+        () => (archivePostsQuery.data?.data?.items || []) as DigitalPost[],
+        [archivePostsQuery.data?.data?.items]
+    );
     const taskTypeOptions = useMemo(() => {
         const uniq = Array.from(new Set(tasks.map((t) => (t.task_type || '').trim()).filter(Boolean)));
         uniq.sort((a, b) => a.localeCompare(b));
@@ -1032,25 +1055,34 @@ export default function DigitalPage() {
             if (!quickPlatforms.length) {
                 throw new Error('اختر منصة واحدة على الأقل.');
             }
+            const manualTags = parseHashtags(quickHashtags);
             const taskRes = await digitalApi.createTask({
                 channel: desk,
                 task_type: taskType,
                 title,
-                brief: quickCaption.trim() || selectedTask?.brief || null,
+                brief: quickSourceText.trim() || selectedTask?.brief || null,
                 due_at: null,
             });
             const taskId = taskRes.data.id;
+            setQuickTaskId(taskId);
             const composed = await Promise.all(
                 quickPlatforms.map(async (platform) => {
                     const res = await digitalApi.composeTask(taskId, { platform, max_hashtags: 6 });
-                    return [platform, { text: res.data.recommended_text || title, hashtags: res.data.hashtags || [] }] as const;
+                    const baseTags = res.data.hashtags || [];
+                    const combined = Array.from(new Set([...baseTags, ...manualTags]));
+                    return [platform, { text: res.data.recommended_text || title, hashtags: combined }] as const;
                 })
             );
             const map = Object.fromEntries(composed) as Record<string, { text: string; hashtags: string[] }>;
             setQuickGenerated(map);
+            const imageMap: Record<string, string> = {};
+            Object.entries(map).forEach(([platform, payload]) => {
+                imageMap[platform] = buildImageText(payload.text || title);
+            });
+            setQuickImageTexts(imageMap);
             const firstPlatform = quickPlatforms[0];
             if (firstPlatform && map[firstPlatform]) {
-                setQuickCaption(map[firstPlatform].text);
+                setQuickPreviewCaption(map[firstPlatform].text);
                 setQuickHashtags((map[firstPlatform].hashtags || []).join(', '));
             }
             return map;
@@ -1070,6 +1102,45 @@ export default function DigitalPage() {
         });
     };
 
+    const quickArchiveMutation = useMutation({
+        mutationFn: async () => {
+            if (!Object.keys(quickGenerated).length) {
+                throw new Error('يجب توليد الصياغات أولًا.');
+            }
+            const title = quickTitle.trim() || selectedTask?.title || (desk === 'news' ? 'تغطية خبرية' : 'تغطية برامجية');
+            const taskType = quickTaskType || selectedTask?.task_type || (desk === 'news' ? 'breaking' : 'clip');
+            const taskId =
+                quickTaskId ??
+                (
+                    await digitalApi.createTask({
+                        channel: desk,
+                        task_type: taskType,
+                        title,
+                        brief: quickSourceText.trim() || selectedTask?.brief || null,
+                        due_at: null,
+                    })
+                ).data.id;
+            await Promise.all(
+                Object.entries(quickGenerated).map(([platform, payload]) =>
+                    digitalApi.createTaskPost(taskId, {
+                        platform,
+                        content_text: payload.text,
+                        hashtags: payload.hashtags || [],
+                        status: 'ready',
+                    })
+                )
+            );
+            return taskId;
+        },
+        onSuccess: async () => {
+            setError(null);
+            setMessage('تم حفظ الصياغات في الأرشيف (جاهز للنشر).');
+            await refreshAll();
+            await queryClient.invalidateQueries({ queryKey: ['digital-archive-posts'] });
+        },
+        onError: (err) => setError(apiErrorMessage(err, 'تعذر حفظ الصياغات في الأرشيف.')),
+    });
+
     const applyQuickTemplate = (templateType: string) => {
         const baseTitle = quickTitle.trim() || selectedTask?.title || '';
         const template = QUICK_TEMPLATE_MAP[templateType];
@@ -1077,14 +1148,14 @@ export default function DigitalPage() {
         if (!quickTitle.trim()) setQuickTitle(baseTitle);
         const captionBase = baseTitle || (desk === 'news' ? 'خبر عاجل' : 'مقطع برنامج');
         const caption = template?.prefix ? `${template.prefix} ${captionBase}` : captionBase;
-        setQuickCaption(caption);
+        if (!quickSourceText.trim()) setQuickSourceText(caption);
         if (template?.hashtags?.length) setQuickHashtags(template.hashtags.join(', '));
     };
 
     const loadFromSelectedTask = () => {
         if (!selectedTask) return;
         setQuickTitle(selectedTask.title || '');
-        setQuickCaption(selectedTask.brief || selectedTask.title || '');
+        setQuickSourceText(selectedTask.brief || selectedTask.title || '');
         if (selectedTask.task_type) {
             setQuickTaskType(selectedTask.task_type);
             const tpl = QUICK_TEMPLATE_MAP[selectedTask.task_type];
@@ -1752,7 +1823,7 @@ export default function DigitalPage() {
                     <div className="flex items-center justify-between gap-2">
                         <div>
                             <div className="text-sm font-semibold text-white">مسار سريع لتوليد الصياغات</div>
-                            <div className="text-xs text-slate-400">اختيار نوع المخرج ثم توليد صياغات جاهزة للمنصة بدون رفع ملفات.</div>
+                            <div className="text-xs text-slate-400">أدخل المحتوى ونوع الخبر/البرنامج، وسنولّد الكابشن ونص الصورة للمنصات.</div>
                         </div>
                         <span className="text-[10px] text-slate-400">{desk === 'news' ? 'خبر/عاجل' : 'مقطع برنامج'}</span>
                     </div>
@@ -1778,12 +1849,12 @@ export default function DigitalPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="عنوان مختصر" className="h-10 rounded-xl border border-slate-700 bg-slate-900/60 px-3 text-sm text-white" />
                         <select value={quickTaskType} onChange={(e) => setQuickTaskType(e.target.value)} className="h-10 rounded-xl border border-slate-700 bg-slate-900/60 px-3 text-sm text-white">
-                            <option value="">نوع المخرج</option>
+                            <option value="">نوع الخبر/البرنامج</option>
                             {quickTaskTemplates.map((template) => (
                                 <option key={template.key} value={template.task_type}>{template.label}</option>
                             ))}
                         </select>
-                        <textarea value={quickCaption} onChange={(e) => setQuickCaption(e.target.value)} placeholder="النص المبدئي أو اتركه فارغًا للتوليد" rows={3} className="md:col-span-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white" />
+                        <textarea value={quickSourceText} onChange={(e) => setQuickSourceText(e.target.value)} placeholder="محتوى الخبر/البرنامج (المدخل الأساسي للتوليد)" rows={4} className="md:col-span-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white" />
                         <div className="flex flex-wrap gap-2 items-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
                             <span className="text-xs text-slate-400">المنصات:</span>
                             {PLATFORM_OPTIONS.map((platform) => {
@@ -1808,9 +1879,16 @@ export default function DigitalPage() {
                         <input value={quickHashtags} onChange={(e) => setQuickHashtags(e.target.value)} placeholder="هاشتاغات مفصولة بفاصلة" className="h-10 rounded-xl border border-slate-700 bg-slate-900/60 px-3 text-sm text-white" />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <button onClick={() => quickGenerateMutation.mutate()} disabled={!canWrite} className="h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs disabled:opacity-50">توليد صياغة</button>
-                        <button onClick={() => copySimple(composeCopyText(quickCaption, parseHashtags(quickHashtags)))} className="h-9 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 text-xs">نسخ الصياغة</button>
+                        <button onClick={() => quickGenerateMutation.mutate()} disabled={!canWrite} className="h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs disabled:opacity-50">توليد صياغات متعددة</button>
+                        <button onClick={() => copySimple(composeCopyText(quickPreviewCaption, parseHashtags(quickHashtags)))} className="h-9 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 text-xs">نسخ الصياغة المختصرة</button>
+                        <button onClick={() => quickArchiveMutation.mutate()} disabled={!canWrite} className="h-9 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs disabled:opacity-50">حفظ في الأرشيف</button>
                     </div>
+                    {quickPreviewCaption && (
+                        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">
+                            <div className="text-[11px] text-slate-400 mb-1">معاينة الكابشن</div>
+                            <div className="whitespace-pre-wrap">{quickPreviewCaption}</div>
+                        </div>
+                    )}
                     {!!Object.keys(quickGenerated).length && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {Object.entries(quickGenerated).map(([platform, payload]) => (
@@ -1825,6 +1903,12 @@ export default function DigitalPage() {
                                         </button>
                                     </div>
                                     <div className="text-xs text-slate-300 whitespace-pre-wrap">{payload.text}</div>
+                                    {quickImageTexts[platform] && (
+                                        <div className="rounded-lg border border-slate-700 bg-slate-950/40 p-2 text-[11px] text-slate-300">
+                                            <div className="text-[10px] text-slate-500 mb-1">نص الصورة المقترح</div>
+                                            {quickImageTexts[platform]}
+                                        </div>
+                                    )}
                                     {!!(payload.hashtags || []).length && (
                                         <div className="text-[10px] text-slate-400">#{payload.hashtags.join(' #')}</div>
                                     )}
@@ -1832,6 +1916,31 @@ export default function DigitalPage() {
                             ))}
                         </div>
                     )}
+                    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+                        <div className="text-xs text-slate-300 mb-2">أرشيف الصياغات الجاهزة للنشر</div>
+                        <div className="space-y-2 max-h-56 overflow-auto">
+                            {archivePosts.length === 0 ? (
+                                <div className="text-xs text-slate-500">لا توجد صياغات جاهزة بعد.</div>
+                            ) : (
+                                archivePosts.map((post) => (
+                                    <div key={post.id} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs text-slate-300">{post.platform}</div>
+                                            <div className="text-[10px] text-slate-500">الصحفي: {post.created_by_username || 'غير معروف'}</div>
+                                        </div>
+                                        <div className="text-xs text-slate-300 mt-1 whitespace-pre-wrap">{post.content_text}</div>
+                                        {!!(post.hashtags || []).length && (
+                                            <div className="text-[10px] text-slate-400 mt-1">#{post.hashtags.join(' #')}</div>
+                                        )}
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <button onClick={() => copySimple(composeCopyText(post.content_text, post.hashtags || []))} className="h-7 px-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs">نسخ</button>
+                                            <span className="text-[10px] text-slate-500">{formatDate(post.created_at)}</span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
                     {queueColumns.map((group) => (

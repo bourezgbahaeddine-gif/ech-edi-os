@@ -2735,6 +2735,12 @@ export const digitalApi = {
             external_post_id?: string | null;
         }
     ) => api.post<DigitalPost>(`/digital/tasks/${taskId}/posts`, payload),
+    listPosts: (params?: {
+        channel?: DigitalChannel | 'all';
+        status?: string;
+        limit?: number;
+        created_by_user_id?: number;
+    }) => api.get<SocialPostListResponse>('/digital/posts', { params }),
     updatePost: (
         postId: number,
         payload: Partial<{

@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
@@ -1165,6 +1165,54 @@ async def list_task_posts(
         version_counts = {int(post_id): int(count or 0) for post_id, count in version_rows.all()}
     items = [_post_response(post, versions_count=version_counts.get(post.id, 0)) for post in posts]
     return SocialPostListResponse(items=items, total=len(items))
+
+
+@router.get("/posts", response_model=SocialPostListResponse)
+async def list_posts(
+    channel: str | None = Query(default=None, pattern="^(news|tv|all)$"),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=30, ge=1, le=200),
+    created_by_user_id: int | None = Query(default=None, ge=1),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _assert_read(current_user)
+    await _ensure_digital_tables(db)
+
+    filters = []
+    if channel and channel != "all":
+        filters.append(SocialPost.channel == channel)
+    if status:
+        statuses = [value.strip() for value in status.split(",") if value.strip()]
+        if statuses:
+            filters.append(SocialPost.status.in_(statuses))
+    if created_by_user_id:
+        filters.append(SocialPost.created_by_user_id == created_by_user_id)
+
+    stmt = select(SocialPost)
+    if filters:
+        stmt = stmt.where(and_(*filters))
+    stmt = stmt.order_by(desc(SocialPost.created_at)).limit(limit)
+    rows = await db.execute(stmt)
+    posts = rows.scalars().all()
+
+    if filters:
+        count_stmt = select(func.count(SocialPost.id)).where(and_(*filters))
+    else:
+        count_stmt = select(func.count(SocialPost.id))
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+
+    post_ids = [post.id for post in posts]
+    version_counts: dict[int, int] = {}
+    if post_ids:
+        version_rows = await db.execute(
+            select(SocialPostVersion.post_id, func.count(SocialPostVersion.id))
+            .where(SocialPostVersion.post_id.in_(post_ids))
+            .group_by(SocialPostVersion.post_id)
+        )
+        version_counts = {int(post_id): int(count or 0) for post_id, count in version_rows.all()}
+    items = [_post_response(post, versions_count=version_counts.get(post.id, 0)) for post in posts]
+    return SocialPostListResponse(items=items, total=total)
 
 
 @router.get("/posts/{post_id:int}/versions", response_model=SocialPostVersionListResponse)
