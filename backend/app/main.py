@@ -61,6 +61,7 @@ from app.api.routes.events import router as events_router
 from app.api.routes.digital import router as digital_router
 from app.api.routes.telemetry import router as telemetry_router
 from app.msi.scheduler import start_msi_scheduler, stop_msi_scheduler
+from app.ops.scheduler import start_ops_scheduler, stop_ops_scheduler
 from app.services.competitor_xray_service import competitor_xray_service
 from app.services.digital_team_service import digital_team_service
 from app.services.echorouk_archive_service import echorouk_archive_service
@@ -527,6 +528,8 @@ async def lifespan(app: FastAPI):
 
     if settings.msi_enabled and settings.msi_scheduler_enabled:
         start_msi_scheduler()
+    if settings.ops_monitor_enabled:
+        start_ops_scheduler()
 
     logger.info(
         "app_ready",
@@ -569,6 +572,8 @@ async def lifespan(app: FastAPI):
     )
     if settings.msi_enabled and settings.msi_scheduler_enabled:
         stop_msi_scheduler()
+    if settings.ops_monitor_enabled:
+        stop_ops_scheduler()
 
     await cache_service.disconnect()
     logger.info("app_shutdown", msg="تم إيقاف النظام بنجاح")

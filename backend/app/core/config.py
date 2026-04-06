@@ -153,6 +153,11 @@ class Settings(BaseSettings):
     msi_default_baseline_days: int = 90
     msi_default_report_limit: int = 30
 
+    ops_monitor_enabled: bool = True
+    ops_monitor_timezone: str = "Africa/Algiers"
+    ops_monitor_daily_hour: int = 7
+    ops_monitor_daily_minute: int = 15
+
     # Queue / Workers
     queue_enabled: bool = True
     queue_default_name: str = "ai_default"
