@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, and_, update, desc, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.rbac import require_roles
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.correlation import get_correlation_id, get_request_id
@@ -41,7 +42,19 @@ from app.services.time_integrity_service import time_integrity_service
 from app.services.ops_monitor_service import ops_monitor_service
 
 logger = get_logger("api.dashboard")
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+DASHBOARD_NEWSROOM_ROLES = (
+    UserRole.director,
+    UserRole.editor_chief,
+    UserRole.journalist,
+    UserRole.social_media,
+    UserRole.print_editor,
+)
+
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["Dashboard"],
+    dependencies=[Depends(require_roles(*DASHBOARD_NEWSROOM_ROLES))],
+)
 settings = get_settings()
 
 
@@ -76,8 +89,12 @@ async def _expire_stale_breaking_flags(db: AsyncSession) -> None:
 
 
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get real-time dashboard statistics."""
+    _assert_internal_dashboard_view_permission(current_user)
     await _expire_stale_breaking_flags(db)
     cached = await cache_service.get_json("dashboard:stats")
     if cached:
@@ -143,8 +160,10 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 async def get_pipeline_runs(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get recent pipeline execution logs."""
+    _assert_internal_dashboard_view_permission(current_user)
     result = await db.execute(
         select(PipelineRun)
         .order_by(PipelineRun.started_at.desc())
@@ -398,8 +417,10 @@ async def get_failed_jobs(
     resolved: bool = False,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get failed jobs from the Dead Letter Queue."""
+    _assert_internal_dashboard_view_permission(current_user)
     result = await db.execute(
         select(FailedJob)
         .where(FailedJob.resolved == resolved)
@@ -474,6 +495,11 @@ async def _enqueue_dashboard_job(
 def _assert_agent_control_permission(user: User) -> None:
     if user.role not in {UserRole.director, UserRole.editor_chief}:
         raise HTTPException(status_code=403, detail="غير مسموح لك بتشغيل هذا الوكيل.")
+
+
+def _assert_internal_dashboard_view_permission(user: User) -> None:
+    if user.role not in {UserRole.director, UserRole.editor_chief}:
+        raise HTTPException(status_code=403, detail="Not allowed to view internal dashboard metrics.")
 
 
 def _assert_director_permission(user: User) -> None:
@@ -894,8 +920,9 @@ async def get_latest_published_monitor(
 
 
 @router.get("/agents/status")
-async def agents_status():
+async def agents_status(current_user: User = Depends(get_current_user)):
     """Get current agent statuses."""
+    _assert_internal_dashboard_view_permission(current_user)
     return {
         "scout": {"status": "ready", "description": "وكيل الكشاف - جمع الأخبار من المصادر"},
         "router": {"status": "ready", "description": "وكيل الموجه - التصنيف والتوجيه"},

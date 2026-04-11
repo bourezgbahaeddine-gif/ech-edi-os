@@ -9,11 +9,26 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.rbac import require_roles
+from app.api.routes.auth import get_current_user
 from app.core.database import get_db
+from app.models.user import User, UserRole
 from app.services.ai_service import ai_service
 from app.services.fact_check_tools_service import fact_check_tools_service
 
-router = APIRouter(prefix="/services", tags=["Journalist Services"])
+NEWSROOM_SERVICE_ROLES = (
+    UserRole.director,
+    UserRole.editor_chief,
+    UserRole.journalist,
+    UserRole.social_media,
+    UserRole.print_editor,
+)
+
+router = APIRouter(
+    prefix="/services",
+    tags=["Journalist Services"],
+    dependencies=[Depends(require_roles(*NEWSROOM_SERVICE_ROLES))],
+)
 
 CONSTITUTION_BASE = (
     "التزم بدستور الشروق التحريري: دقة، توازن، حياد، وضوح، عدم الإثارة، "
@@ -285,13 +300,16 @@ async def multimedia_translate(payload: dict):
 
 
 @router.post("/multimedia/image-prompt")
-async def multimedia_image_prompt(payload: dict, db: AsyncSession = Depends(get_db)):
+async def multimedia_image_prompt(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     text = payload.get("text", "")
     style = payload.get("style", "cinematic")
     model = (payload.get("model") or "nanobanana2").strip().lower()
     lang = _target_language(payload)
     article_id = payload.get("article_id")
-    created_by = payload.get("created_by")
     if not text:
         raise HTTPException(400, "Missing text")
 
@@ -334,18 +352,21 @@ Requested style:
             article_id=article_id,
             prompt_text=result,
             style=style,
-            created_by=created_by,
+            created_by=current_user.username,
         ))
         await db.commit()
     return {"result": result}
 
 
 @router.post("/multimedia/infographic/analyze")
-async def infographic_analyze(payload: dict, db: AsyncSession = Depends(get_db)):
+async def infographic_analyze(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     text = payload.get("text", "")
     lang = _target_language(payload)
     article_id = payload.get("article_id")
-    created_by = payload.get("created_by")
     if not text:
         raise HTTPException(400, "Missing text")
 
@@ -373,19 +394,22 @@ async def infographic_analyze(payload: dict, db: AsyncSession = Depends(get_db))
         db.add(InfographicData(
             article_id=article_id,
             data_json=json.dumps(data, ensure_ascii=False),
-            created_by=created_by,
+            created_by=current_user.username,
         ))
         await db.commit()
     return {"data": data}
 
 
 @router.post("/multimedia/infographic/prompt")
-async def infographic_prompt(payload: dict, db: AsyncSession = Depends(get_db)):
+async def infographic_prompt(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     data = payload.get("data", {})
     model = (payload.get("model") or "nanobanana2").strip().lower()
     lang = _target_language(payload)
     article_id = payload.get("article_id")
-    created_by = payload.get("created_by")
     if not data:
         raise HTTPException(400, "Missing data")
     prompt = f"""
@@ -422,7 +446,7 @@ Rules:
             article_id=article_id,
             data_json=json.dumps(data, ensure_ascii=False),
             prompt_text=result,
-            created_by=created_by,
+            created_by=current_user.username,
         ))
         await db.commit()
     return {"result": result}
