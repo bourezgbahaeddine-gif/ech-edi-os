@@ -13,8 +13,10 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError as PydanticValidationError
@@ -73,6 +75,17 @@ from app.api.envelope import error_envelope
 
 settings = get_settings()
 logger = get_logger("main")
+
+
+def _serialize_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    serialized: list[dict[str, Any]] = []
+    for error in errors:
+        normalized = dict(error)
+        ctx = normalized.get("ctx")
+        if isinstance(ctx, dict) and "error" in ctx:
+            normalized["ctx"] = {**ctx, "error": str(ctx["error"])}
+        serialized.append(jsonable_encoder(normalized))
+    return serialized
 
 # Track uptime
 _start_time = time.time()
@@ -673,24 +686,26 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.warning("validation_error", path=request.url.path, errors=exc.errors())
+    errors = _serialize_validation_errors(exc.errors())
+    logger.warning("validation_error", path=request.url.path, errors=errors)
     return error_envelope(
         code="validation_error",
         message="Validation failed",
         status_code=422,
-        details=exc.errors(),
+        details=errors,
         meta={"path": request.url.path},
     )
 
 
 @app.exception_handler(PydanticValidationError)
 async def pydantic_validation_exception_handler(request: Request, exc: PydanticValidationError):
-    logger.warning("validation_error", path=request.url.path, errors=exc.errors())
+    errors = _serialize_validation_errors(exc.errors())
+    logger.warning("validation_error", path=request.url.path, errors=errors)
     return error_envelope(
         code="validation_error",
         message="Validation failed",
         status_code=422,
-        details=exc.errors(),
+        details=errors,
         meta={"path": request.url.path},
     )
 
