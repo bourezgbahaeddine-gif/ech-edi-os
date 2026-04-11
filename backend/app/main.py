@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select, func
 
 from app.core.config import get_settings
@@ -672,6 +673,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning("validation_error", path=request.url.path, errors=exc.errors())
+    return error_envelope(
+        code="validation_error",
+        message="Validation failed",
+        status_code=422,
+        details=exc.errors(),
+        meta={"path": request.url.path},
+    )
+
+
+@app.exception_handler(PydanticValidationError)
+async def pydantic_validation_exception_handler(request: Request, exc: PydanticValidationError):
     logger.warning("validation_error", path=request.url.path, errors=exc.errors())
     return error_envelope(
         code="validation_error",
