@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 MEMORY_SUBTYPE_PATTERN = "^(general|style_rule|editorial_decision|fact_pattern|coverage_lesson|source_note|story_context|event_playbook|incident_postmortem)$"
 MEMORY_FRESHNESS_PATTERN = "^(stable|review_soon|expired)$"
 
 
-class MemoryCreateRequest(BaseModel):
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MemoryCreateRequest(StrictRequestModel):
     memory_type: str = Field(default="operational", pattern="^(operational|knowledge|session)$")
     memory_subtype: str = Field(default="general", pattern=MEMORY_SUBTYPE_PATTERN)
     title: str = Field(..., min_length=3, max_length=512)
@@ -23,7 +27,7 @@ class MemoryCreateRequest(BaseModel):
     valid_until: datetime | None = None
 
 
-class MemoryUpdateRequest(BaseModel):
+class MemoryUpdateRequest(StrictRequestModel):
     memory_type: str | None = Field(default=None, pattern="^(operational|knowledge|session)$")
     memory_subtype: str | None = Field(default=None, pattern=MEMORY_SUBTYPE_PATTERN)
     title: str | None = Field(default=None, min_length=3, max_length=512)

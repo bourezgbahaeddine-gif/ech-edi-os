@@ -5,10 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class SimRunRequest(BaseModel):
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SimRunRequest(StrictRequestModel):
     headline: str = Field(..., min_length=6, max_length=1024)
     excerpt: str | None = Field(default=None, max_length=3000)
     platform: Literal["facebook", "x"] = "facebook"

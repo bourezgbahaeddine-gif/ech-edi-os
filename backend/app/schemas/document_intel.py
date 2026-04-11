@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class DocumentExtractNewsItem(BaseModel):
@@ -86,14 +90,14 @@ class DocumentIntelActionLogItem(BaseModel):
     created_at: datetime
 
 
-class DocumentIntelCreateDraftRequest(BaseModel):
+class DocumentIntelCreateDraftRequest(StrictRequestModel):
     angle_title: str | None = None
     claim_indexes: list[int] = Field(default_factory=list)
     category: str | None = "international"
     urgency: str | None = "normal"
 
 
-class DocumentIntelCreateStoryRequest(BaseModel):
+class DocumentIntelCreateStoryRequest(StrictRequestModel):
     angle_title: str | None = None
     angle_why_it_matters: str | None = None
 

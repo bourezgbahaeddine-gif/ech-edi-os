@@ -878,6 +878,7 @@ async def create_event(
         preparation_started_at=preparation_started_at,
         owner_user_id=owner_user_id,
         owner_username=owner_username,
+        # Audit identity is derived from the authenticated user; owner assignment stays business data.
         created_by_user_id=current_user.id,
         created_by_username=current_user.username,
         updated_by_user_id=current_user.id,

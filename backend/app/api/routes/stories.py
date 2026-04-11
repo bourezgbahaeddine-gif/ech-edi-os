@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,11 @@ from app.services.audit_service import audit_service
 router = APIRouter(prefix="/stories", tags=["Stories"])
 
 
-class StoryCreateRequest(BaseModel):
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class StoryCreateRequest(_StrictRequestModel):
     title: str = Field(..., min_length=4, max_length=1024)
     summary: str | None = Field(default=None, max_length=5000)
     category: str | None = Field(default=None, max_length=80)
@@ -40,7 +44,7 @@ class StoryCreateRequest(BaseModel):
     priority: int = Field(default=5, ge=1, le=10)
 
 
-class StoryLinkRequest(BaseModel):
+class StoryLinkRequest(_StrictRequestModel):
     note: str | None = Field(default=None, max_length=1000)
 
 

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +52,11 @@ settings = get_settings()
 router = APIRouter(prefix="/editorial", tags=["Editorial"])
 
 
-class ArticleProcessRequest(BaseModel):
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ArticleProcessRequest(_StrictRequestModel):
     action: Literal[
         "summarize",
         "translate",
@@ -68,28 +72,28 @@ class ArticleProcessRequest(BaseModel):
     value: Optional[str] = Field(default=None, max_length=5000)
 
 
-class DraftUpsertRequest(BaseModel):
+class DraftUpsertRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=20000)
     note: Optional[str] = Field(default=None, max_length=1000)
     source_action: Optional[str] = Field(default=None, max_length=100)
 
 
-class DraftUpdateRequest(BaseModel):
+class DraftUpdateRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=20000)
     note: Optional[str] = Field(default=None, max_length=1000)
     version: int = Field(..., ge=1)
 
 
-class DraftAutosaveRequest(BaseModel):
+class DraftAutosaveRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=50000)
     note: Optional[str] = Field(default=None, max_length=1000)
     based_on_version: int = Field(..., ge=1)
 
 
-class DraftSuggestionApplyRequest(BaseModel):
+class DraftSuggestionApplyRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=50000)
     note: Optional[str] = Field(default=None, max_length=1000)
@@ -97,51 +101,51 @@ class DraftSuggestionApplyRequest(BaseModel):
     suggestion_tool: Optional[str] = Field(default="rewrite", max_length=100)
 
 
-class RewriteSuggestionRequest(BaseModel):
+class RewriteSuggestionRequest(_StrictRequestModel):
     mode: Literal["formal", "breaking", "analysis", "simple"] = "formal"
     instruction: Optional[str] = Field(default=None, max_length=1000)
 
 
-class InlineAiRequest(BaseModel):
+class InlineAiRequest(_StrictRequestModel):
     action: Literal["rewrite", "shorten", "expand", "clarify"] = "rewrite"
     text: str = Field(..., min_length=5, max_length=4000)
     instruction: Optional[str] = Field(default=None, max_length=1000)
 
 
-class HeadlineSuggestionRequest(BaseModel):
+class HeadlineSuggestionRequest(_StrictRequestModel):
     count: int = Field(default=5, ge=1, le=10)
 
 
-class ClaimVerifyRequest(BaseModel):
+class ClaimVerifyRequest(_StrictRequestModel):
     threshold: float = Field(default=0.70, ge=0.1, le=0.99)
     claim_overrides: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
-class LinkSuggestRequest(BaseModel):
+class LinkSuggestRequest(_StrictRequestModel):
     mode: Literal["internal", "external", "mixed"] = "mixed"
     target_count: int = Field(default=6, ge=1, le=12)
 
 
-class LinkValidateRequest(BaseModel):
+class LinkValidateRequest(_StrictRequestModel):
     run_id: str = Field(..., min_length=8, max_length=64)
 
 
-class LinkApplyRequest(BaseModel):
+class LinkApplyRequest(_StrictRequestModel):
     run_id: str = Field(..., min_length=8, max_length=64)
     based_on_version: int = Field(..., ge=1)
     item_ids: Optional[list[int]] = Field(default=None, max_length=20)
 
 
-class ChiefFinalDecisionRequest(BaseModel):
+class ChiefFinalDecisionRequest(_StrictRequestModel):
     decision: Literal["approve", "approve_with_reservations", "send_back", "reject", "return_for_revision"]
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
-class ReservationSubmitRequest(BaseModel):
+class ReservationSubmitRequest(_StrictRequestModel):
     notes: str = Field(..., min_length=5, max_length=1000)
 
 
-class ManualWorkspaceDraftCreateRequest(BaseModel):
+class ManualWorkspaceDraftCreateRequest(_StrictRequestModel):
     title: str = Field(..., min_length=5, max_length=1024)
     body: str = Field(..., min_length=30, max_length=50000)
     summary: Optional[str] = Field(default=None, max_length=3000)
@@ -150,7 +154,7 @@ class ManualWorkspaceDraftCreateRequest(BaseModel):
     source_action: Optional[str] = Field(default="manual_topic", max_length=100)
 
 
-class WorkspacePromptOrchestratorRunRequest(BaseModel):
+class WorkspacePromptOrchestratorRunRequest(_StrictRequestModel):
     task_key: Optional[Literal["first_draft", "verify_claims", "proofread", "quality_review", "headline_pack", "social_pack", "publish_gate"]] = None
     auto_apply: Optional[bool] = None
 

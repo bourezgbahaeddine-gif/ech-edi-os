@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class DigitalTeamScopeResponse(BaseModel):
@@ -18,7 +22,7 @@ class DigitalTeamScopeResponse(BaseModel):
     updated_at: datetime
 
 
-class DigitalTeamScopeUpsertRequest(BaseModel):
+class DigitalTeamScopeUpsertRequest(StrictRequestModel):
     can_manage_news: bool = True
     can_manage_tv: bool = False
     platforms: list[str] = Field(default_factory=lambda: ["facebook", "x", "youtube"])
@@ -44,7 +48,7 @@ class ProgramSlotResponse(BaseModel):
     updated_at: datetime
 
 
-class ProgramSlotCreateRequest(BaseModel):
+class ProgramSlotCreateRequest(StrictRequestModel):
     channel: str = Field(..., pattern="^(news|tv)$")
     program_title: str = Field(..., min_length=2, max_length=255)
     program_type: str | None = Field(default=None, max_length=64)
@@ -60,7 +64,7 @@ class ProgramSlotCreateRequest(BaseModel):
     source_ref: str | None = Field(default=None, max_length=2048)
 
 
-class ProgramSlotUpdateRequest(BaseModel):
+class ProgramSlotUpdateRequest(StrictRequestModel):
     program_title: str | None = Field(default=None, min_length=2, max_length=255)
     program_type: str | None = Field(default=None, max_length=64)
     description: str | None = Field(default=None, max_length=4000)
@@ -101,7 +105,7 @@ class SocialTaskResponse(BaseModel):
     updated_at: datetime
 
 
-class SocialTaskCreateRequest(BaseModel):
+class SocialTaskCreateRequest(StrictRequestModel):
     channel: str = Field(..., pattern="^(news|tv)$")
     platform: str = Field(default="all", max_length=32)
     task_type: str = Field(default="manual", max_length=32)
@@ -117,7 +121,7 @@ class SocialTaskCreateRequest(BaseModel):
     story_id: int | None = Field(default=None, ge=1)
 
 
-class SocialTaskUpdateRequest(BaseModel):
+class SocialTaskUpdateRequest(StrictRequestModel):
     platform: str | None = Field(default=None, max_length=32)
     task_type: str | None = Field(default=None, max_length=32)
     title: str | None = Field(default=None, min_length=3, max_length=512)
@@ -159,7 +163,7 @@ class SocialPostResponse(BaseModel):
     versions_count: int = 0
 
 
-class SocialPostCreateRequest(BaseModel):
+class SocialPostCreateRequest(StrictRequestModel):
     platform: str = Field(..., min_length=2, max_length=32)
     content_text: str = Field(..., min_length=2, max_length=10000)
     hashtags: list[str] = Field(default_factory=list)
@@ -170,7 +174,7 @@ class SocialPostCreateRequest(BaseModel):
     external_post_id: str | None = Field(default=None, max_length=128)
 
 
-class SocialPostUpdateRequest(BaseModel):
+class SocialPostUpdateRequest(StrictRequestModel):
     content_text: str | None = Field(default=None, min_length=2, max_length=10000)
     hashtags: list[str] | None = None
     media_urls: list[str] | None = None
@@ -206,7 +210,7 @@ class SocialPostVersionListResponse(BaseModel):
     total: int
 
 
-class SocialPostVersionDuplicateRequest(BaseModel):
+class SocialPostVersionDuplicateRequest(StrictRequestModel):
     source_version_no: int | None = Field(default=None, ge=1)
     version_type: str = Field(default="duplicated", max_length=32)
     note: str | None = Field(default=None, max_length=4000)
@@ -245,7 +249,7 @@ class DigitalPlaybookTemplate(BaseModel):
     include_media_slot: bool = False
 
 
-class DigitalBundleGenerateRequest(BaseModel):
+class DigitalBundleGenerateRequest(StrictRequestModel):
     playbook_key: str = Field(default="breaking_alert", max_length=64)
     save_as_posts: bool = True
 
@@ -259,7 +263,7 @@ class DigitalBundleGenerateResponse(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
 
 
-class DigitalDispatchRequest(BaseModel):
+class DigitalDispatchRequest(StrictRequestModel):
     adapter: str = Field(default="manual", max_length=32)
     action: str = Field(default="publish", pattern="^(publish|schedule)$")
     scheduled_at: datetime | None = None
@@ -316,7 +320,7 @@ class DigitalGenerationResponse(BaseModel):
     skipped_duplicates: int = 0
 
 
-class DigitalComposeRequest(BaseModel):
+class DigitalComposeRequest(StrictRequestModel):
     platform: str = Field(default="facebook", min_length=1, max_length=32)
     max_hashtags: int = Field(default=6, ge=1, le=12)
 

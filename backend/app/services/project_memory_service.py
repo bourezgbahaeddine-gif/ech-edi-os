@@ -113,6 +113,7 @@ class ProjectMemoryService:
             importance=importance,
             freshness_status=self._normalize_freshness(freshness_status),
             valid_until=valid_until,
+            # Audit identity is derived from the authenticated user, never caller-supplied payload.
             created_by_user_id=actor.id,
             created_by_username=actor.username,
             updated_by_user_id=actor.id,

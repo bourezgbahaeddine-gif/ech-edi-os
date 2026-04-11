@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +43,11 @@ CHIEF_ROLES = (
 )
 
 
-class ScriptFromArticleRequest(BaseModel):
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ScriptFromArticleRequest(_StrictRequestModel):
     type: Literal["story_script", "video_script"]
     tone: str = Field(default="neutral", max_length=50)
     length_seconds: int = Field(default=75, ge=20, le=900)
@@ -54,7 +58,7 @@ class ScriptFromArticleRequest(BaseModel):
     editorial_objective: str | None = Field(default=None, max_length=64)
 
 
-class ScriptFromStoryRequest(BaseModel):
+class ScriptFromStoryRequest(_StrictRequestModel):
     type: Literal["story_script", "video_script"]
     tone: str = Field(default="neutral", max_length=50)
     length_seconds: int = Field(default=90, ge=20, le=1200)
@@ -65,7 +69,7 @@ class ScriptFromStoryRequest(BaseModel):
     editorial_objective: str | None = Field(default=None, max_length=64)
 
 
-class BulletinRequest(BaseModel):
+class BulletinRequest(_StrictRequestModel):
     max_items: int = Field(default=8, ge=1, le=20)
     duration_minutes: int = Field(default=5, ge=1, le=30)
     desks: list[str] = Field(default_factory=list)
@@ -73,11 +77,11 @@ class BulletinRequest(BaseModel):
     tone: str = Field(default="neutral", max_length=50)
 
 
-class ScriptDecisionRequest(BaseModel):
+class ScriptDecisionRequest(_StrictRequestModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
-class ScriptRegenerateRequest(BaseModel):
+class ScriptRegenerateRequest(_StrictRequestModel):
     tone: str | None = Field(default=None, max_length=50)
     length_seconds: int | None = Field(default=None, ge=20, le=1200)
     language: str | None = Field(default=None, max_length=8)
@@ -90,11 +94,11 @@ class ScriptRegenerateRequest(BaseModel):
     editorial_objective: str | None = Field(default=None, max_length=64)
 
 
-class ScriptDuplicateVersionRequest(BaseModel):
+class ScriptDuplicateVersionRequest(_StrictRequestModel):
     source_version: int | None = Field(default=None, ge=1)
 
 
-class VideoWorkspaceUpdateRequest(BaseModel):
+class VideoWorkspaceUpdateRequest(_StrictRequestModel):
     video_profile: str | None = Field(default=None, max_length=64)
     target_platform: str | None = Field(default=None, max_length=64)
     editorial_objective: str | None = Field(default=None, max_length=64)
@@ -105,7 +109,7 @@ class VideoWorkspaceUpdateRequest(BaseModel):
     hook_strength: float | None = Field(default=None, ge=0, le=1)
 
 
-class VideoScenePatchRequest(BaseModel):
+class VideoScenePatchRequest(_StrictRequestModel):
     duration_s: int | None = Field(default=None, ge=1, le=600)
     scene_type: str | None = Field(default=None, max_length=64)
     priority: str | None = Field(default=None, max_length=32)
@@ -117,7 +121,7 @@ class VideoScenePatchRequest(BaseModel):
     locked: bool | None = None
 
 
-class VideoSceneAddRequest(BaseModel):
+class VideoSceneAddRequest(_StrictRequestModel):
     insert_after: int | None = Field(default=None, ge=1)
     duration_s: int = Field(default=5, ge=1, le=600)
     scene_type: str = Field(default="body", max_length=64)
@@ -129,24 +133,24 @@ class VideoSceneAddRequest(BaseModel):
     source_reference: str | None = Field(default=None, max_length=1024)
 
 
-class VideoSceneSplitRequest(BaseModel):
+class VideoSceneSplitRequest(_StrictRequestModel):
     split_duration_s: int = Field(..., ge=1, le=600)
 
 
-class VideoSceneMergeRequest(BaseModel):
+class VideoSceneMergeRequest(_StrictRequestModel):
     source_idx: int = Field(..., ge=1)
     target_idx: int = Field(..., ge=1)
 
 
-class VideoSceneReorderRequest(BaseModel):
+class VideoSceneReorderRequest(_StrictRequestModel):
     ordered_scene_indices: list[int] = Field(default_factory=list, min_length=1)
 
 
-class VideoCaptionsUpdateRequest(BaseModel):
+class VideoCaptionsUpdateRequest(_StrictRequestModel):
     captions_lines: list[dict] = Field(default_factory=list)
 
 
-class VideoDeliveryUpdateRequest(BaseModel):
+class VideoDeliveryUpdateRequest(_StrictRequestModel):
     title: str | None = Field(default=None, max_length=1024)
     thumbnail_line: str | None = Field(default=None, max_length=2000)
     social_copy: str | None = Field(default=None, max_length=8000)

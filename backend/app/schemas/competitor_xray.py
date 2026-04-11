@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class CompetitorXraySourceCreate(BaseModel):
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CompetitorXraySourceCreate(StrictRequestModel):
     name: str = Field(..., min_length=2, max_length=120)
     feed_url: str = Field(..., min_length=8, max_length=2048)
     domain: str = Field(..., min_length=3, max_length=255)
@@ -16,7 +20,7 @@ class CompetitorXraySourceCreate(BaseModel):
     enabled: bool = True
 
 
-class CompetitorXraySourceUpdate(BaseModel):
+class CompetitorXraySourceUpdate(StrictRequestModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     language: str | None = Field(default=None, min_length=2, max_length=16)
     weight: float | None = Field(default=None, ge=0.1, le=3.0)
@@ -35,7 +39,7 @@ class CompetitorXraySourceResponse(BaseModel):
     updated_at: datetime
 
 
-class CompetitorXrayRunRequest(BaseModel):
+class CompetitorXrayRunRequest(StrictRequestModel):
     limit_per_source: int = Field(default=8, ge=1, le=30)
     hours_window: int = Field(default=48, ge=6, le=120)
     idempotency_key: str | None = Field(default=None, max_length=128)
@@ -76,7 +80,7 @@ class CompetitorXrayItemResponse(BaseModel):
     updated_at: datetime
 
 
-class CompetitorXrayBriefRequest(BaseModel):
+class CompetitorXrayBriefRequest(StrictRequestModel):
     item_id: int
     tone: str = Field(default="newsroom", max_length=32)
 

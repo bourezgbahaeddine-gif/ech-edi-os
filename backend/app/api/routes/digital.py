@@ -1010,6 +1010,7 @@ async def create_task(
         event_id=payload.event_id,
         article_id=payload.article_id,
         story_id=payload.story_id,
+        # Audit identity is derived from the authenticated user; owner assignment stays business data.
         created_by_user_id=current_user.id,
         created_by_username=current_user.username,
         updated_by_user_id=current_user.id,

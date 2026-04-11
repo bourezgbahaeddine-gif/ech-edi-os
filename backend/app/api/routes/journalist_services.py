@@ -7,6 +7,7 @@ Editor/Fact-check/SEO/Multimedia tools for journalists.
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.rbac import require_roles
@@ -34,6 +35,31 @@ CONSTITUTION_BASE = (
     "التزم بدستور الشروق التحريري: دقة، توازن، حياد، وضوح، عدم الإثارة، "
     "صياغة مهنية قابلة للنشر، ومنع الحشو أو التعليقات خارج النص المطلوب."
 )
+
+
+class _StrictPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MultimediaImagePromptRequest(_StrictPayload):
+    text: str = Field(..., min_length=1)
+    style: str = Field(default="cinematic", max_length=128)
+    model: str | None = Field(default="nanobanana2", max_length=128)
+    language: str | None = Field(default="ar", max_length=8)
+    article_id: int | None = None
+
+
+class InfographicAnalyzeRequest(_StrictPayload):
+    text: str = Field(..., min_length=1)
+    language: str | None = Field(default="ar", max_length=8)
+    article_id: int | None = None
+
+
+class InfographicPromptRequest(_StrictPayload):
+    data: dict = Field(default_factory=dict)
+    model: str | None = Field(default="nanobanana2", max_length=128)
+    language: str | None = Field(default="ar", max_length=8)
+    article_id: int | None = None
 
 
 def _sanitize_ai_text(text: str) -> str:
@@ -301,17 +327,15 @@ async def multimedia_translate(payload: dict):
 
 @router.post("/multimedia/image-prompt")
 async def multimedia_image_prompt(
-    payload: dict,
+    payload: MultimediaImagePromptRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    text = payload.get("text", "")
-    style = payload.get("style", "cinematic")
-    model = (payload.get("model") or "nanobanana2").strip().lower()
-    lang = _target_language(payload)
-    article_id = payload.get("article_id")
-    if not text:
-        raise HTTPException(400, "Missing text")
+    text = payload.text
+    style = payload.style
+    model = (payload.model or "nanobanana2").strip().lower()
+    lang = _target_language(payload.model_dump())
+    article_id = payload.article_id
 
     prompt = f"""
 {CONSTITUTION_BASE}
@@ -348,6 +372,7 @@ Requested style:
     result = _sanitize_ai_text(await ai_service.generate_text(prompt))
     if result:
         from app.models.constitution import ImagePrompt
+        # Audit identity is derived from the authenticated user, never from client payload.
         db.add(ImagePrompt(
             article_id=article_id,
             prompt_text=result,
@@ -360,15 +385,13 @@ Requested style:
 
 @router.post("/multimedia/infographic/analyze")
 async def infographic_analyze(
-    payload: dict,
+    payload: InfographicAnalyzeRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    text = payload.get("text", "")
-    lang = _target_language(payload)
-    article_id = payload.get("article_id")
-    if not text:
-        raise HTTPException(400, "Missing text")
+    text = payload.text
+    lang = _target_language(payload.model_dump())
+    article_id = payload.article_id
 
     prompt = f"""
 {CONSTITUTION_BASE}
@@ -391,6 +414,7 @@ async def infographic_analyze(
     if data:
         from app.models.constitution import InfographicData
         import json
+        # Audit identity is derived from the authenticated user, never from client payload.
         db.add(InfographicData(
             article_id=article_id,
             data_json=json.dumps(data, ensure_ascii=False),
@@ -402,14 +426,14 @@ async def infographic_analyze(
 
 @router.post("/multimedia/infographic/prompt")
 async def infographic_prompt(
-    payload: dict,
+    payload: InfographicPromptRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    data = payload.get("data", {})
-    model = (payload.get("model") or "nanobanana2").strip().lower()
-    lang = _target_language(payload)
-    article_id = payload.get("article_id")
+    data = payload.data
+    model = (payload.model or "nanobanana2").strip().lower()
+    lang = _target_language(payload.model_dump())
+    article_id = payload.article_id
     if not data:
         raise HTTPException(400, "Missing data")
     prompt = f"""
@@ -442,6 +466,7 @@ Rules:
     if result:
         from app.models.constitution import InfographicData
         import json
+        # Audit identity is derived from the authenticated user, never from client payload.
         db.add(InfographicData(
             article_id=article_id,
             data_json=json.dumps(data, ensure_ascii=False),

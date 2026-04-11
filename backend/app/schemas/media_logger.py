@@ -5,10 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class MediaLoggerRunFromUrlRequest(BaseModel):
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class MediaLoggerRunFromUrlRequest(StrictRequestModel):
     media_url: str = Field(..., min_length=10, max_length=2048)
     language_hint: Literal["ar", "fr", "en", "auto"] = "ar"
     idempotency_key: str | None = Field(default=None, max_length=128)
@@ -70,7 +74,7 @@ class MediaLoggerResultResponse(BaseModel):
     finished_at: datetime | None = None
 
 
-class MediaLoggerAskRequest(BaseModel):
+class MediaLoggerAskRequest(StrictRequestModel):
     run_id: str = Field(..., min_length=8, max_length=64)
     question: str = Field(..., min_length=4, max_length=1000)
 

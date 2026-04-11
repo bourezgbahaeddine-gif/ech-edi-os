@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class EventMemoCreateRequest(BaseModel):
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class EventMemoCreateRequest(StrictRequestModel):
     scope: str = Field(default="national", pattern="^(national|international|religious)$")
     title: str = Field(..., min_length=3, max_length=512)
     summary: str | None = None
@@ -27,7 +31,7 @@ class EventMemoCreateRequest(BaseModel):
     story_id: int | None = Field(default=None, ge=1)
 
 
-class EventMemoUpdateRequest(BaseModel):
+class EventMemoUpdateRequest(StrictRequestModel):
     scope: str | None = Field(default=None, pattern="^(national|international|religious)$")
     title: str | None = Field(default=None, min_length=3, max_length=512)
     summary: str | None = None
@@ -143,7 +147,7 @@ class EventCoverageResponse(BaseModel):
     next_action: str | None = None
 
 
-class EventLinkStoryRequest(BaseModel):
+class EventLinkStoryRequest(StrictRequestModel):
     story_id: int | None = Field(default=None, ge=1)
     create_if_missing: bool = False
     title: str | None = Field(default=None, min_length=4, max_length=1024)
