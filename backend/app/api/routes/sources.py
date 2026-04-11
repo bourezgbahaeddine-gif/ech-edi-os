@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,13 @@ router = APIRouter(
 settings = get_settings()
 POLICY_KEY_BLOCKED = "SCOUT_BLOCKED_DOMAINS"
 POLICY_KEY_FRESHRSS_CAP = "SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN"
+
+
+class SourcePolicyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked_domains: list[str] | None = Field(default=None)
+    freshrss_max_per_source_per_run: int | None = Field(default=None, ge=1, le=100)
 
 
 def _ensure_source_manager(user: User) -> None:
@@ -462,23 +470,20 @@ async def get_sources_policy(
 
 @router.put("/policy")
 async def update_sources_policy(
-    payload: dict,
+    payload: SourcePolicyUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update source ingestion policy (blocked domains and FreshRSS source cap)."""
+    """Update source ingestion policy. Input: blocked_domains array and optional FreshRSS cap."""
     _ensure_source_manager(current_user)
 
-    blocked_domains = _normalize_domains_input(payload.get("blocked_domains"))
+    blocked_domains = _normalize_domains_input(payload.blocked_domains)
     if not blocked_domains:
         blocked_domains = _split_csv_domains(settings.scout_blocked_domains)
 
-    freshrss_cap = payload.get("freshrss_max_per_source_per_run", settings.scout_freshrss_max_per_source_per_run)
-    try:
-        freshrss_cap = int(freshrss_cap)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid freshrss_max_per_source_per_run")
-    freshrss_cap = max(1, min(freshrss_cap, 100))
+    freshrss_cap = payload.freshrss_max_per_source_per_run
+    if freshrss_cap is None:
+        freshrss_cap = settings.scout_freshrss_max_per_source_per_run
 
     await _upsert_setting(
         db,
