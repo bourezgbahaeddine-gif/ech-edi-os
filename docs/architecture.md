@@ -1,6 +1,6 @@
 ﻿# Echorouk Editorial OS — Architecture
 
-Last updated: 2026-03-17
+Last updated: 2026-04-11
 
 ## 1) System Overview
 Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to manual-publish readiness.
@@ -151,7 +151,8 @@ Frontend surface_view / next_action_click events
 
 ### API
 - FastAPI
-- Pydantic
+- Pydantic for JSON/body request models
+- FastAPI parameter validation for query/path/form/file inputs
 - SQLAlchemy
 
 ### Data
@@ -169,6 +170,7 @@ Frontend surface_view / next_action_click events
 - RSS-Bridge
 
 ## 11) Main Backend Domains
+- `backend/app/main.py` app assembly, exception handling, and `/health`
 - `backend/app/agents/` editorial and AI pipeline agents
 - `backend/app/api/routes/` REST entrypoints
 - `backend/app/services/` domain services
@@ -183,6 +185,19 @@ Frontend surface_view / next_action_click events
 - `frontend/src/components/editorial-os/` explanatory docs UI
 - `frontend/src/lib/api.ts` API contracts
 - `frontend/src/lib/workflow-language.ts` shared workflow labels
+
+Current route footprint in `frontend/src/app/`:
+- 36 route pages in total
+- 32 static surfaces
+- 4 dynamic/detail routes (`/news/[id]`, `/scripts/[scriptId]`, `/ready-publish/[workId]`, `/dashboard/metric/[metric]`)
+
+Monitored agent modules currently present in `backend/app/agents/`:
+- Scout
+- Router
+- Scribe
+- Trend Radar
+- Audio
+- Published Monitor
 
 ## 13) Ports
 - Backend: `8000`

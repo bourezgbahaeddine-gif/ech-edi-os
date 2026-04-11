@@ -43,6 +43,8 @@
 Reference: `docs/BRAND_GUIDE.md`
 Reference: `NOTICE.md`
 
+Current codebase release: `v1.1 / 1.1.0` (`Async AI Isolation`)
+
 ### 👤 Attribution & Rights
 
 - Designer/Developer: `Bourezg Baha eddine` (بهاء الدين بورزق).
@@ -88,18 +90,18 @@ echorouk-swarm/
 │   ├── app/
 │   │   ├── core/          # Config, Database, Logging
 │   │   ├── models/        # SQLAlchemy ORM Models
-│   │   ├── schemas/       # Pydantic Request/Response
-│   │   ├── agents/        # AI Agent implementations (5 agents)
-│   │   ├── services/      # Shared services (AI, Cache, Notifications)
-│   │   ├── api/routes/    # FastAPI endpoints
+│   │   ├── schemas/       # Pydantic request/response models
+│   │   ├── agents/        # 6 agent modules (Scout, Router, Scribe, Trend Radar, Audio, Published Monitor)
+│   │   ├── services/      # Shared services and domain workflows
+│   │   ├── api/routes/    # 22 FastAPI route modules
 │   │   ├── utils/         # Hashing, Text processing
 │   │   └── main.py        # Application entry point
 │   ├── tests/             # Unit & integration tests
 │   ├── requirements.txt
 │   └── Dockerfile
-├── frontend/              # Next.js 16 Dashboard
+├── frontend/              # Next.js 16 newsroom application
 │   ├── src/
-│   │   ├── app/           # 6 pages (Dashboard, News, Editorial, Sources, Agents, Trends)
+│   │   ├── app/           # 36 route pages (32 static surfaces + 4 dynamic/detail routes)
 │   │   ├── components/    # Reusable UI components (Layout, Dashboard widgets)
 │   │   └── lib/           # API client, utilities, providers
 │   ├── Dockerfile
@@ -126,6 +128,7 @@ The following repository-level documents are the canonical onboarding/context pa
 - `TECHNICAL_CONTEXT_TYPES.md`
 - `TECHNICAL_CONTEXT_CONFIG.md`
 - `AGENT_ONBOARDING.md`
+- `docs/OPS_HANDOFF_2026-02-26.md` (latest operational handoff)
 
 Recommended read order:
 
@@ -191,7 +194,14 @@ SCOUT_USE_FRESHRSS=true
 FRESHRSS_FEED_URL=http://freshrss:80/p/i/?a=rss&state=all
 RSSBRIDGE_ENABLED=true
 RSSBRIDGE_BASE_URL=http://rssbridge:80
+AUTO_PIPELINE_ENABLED=true
+SCOUT_INTERVAL_MINUTES=5
+FRESHRSS_CRON_MIN=*/5
+SCOUT_MAX_ARTICLE_AGE_HOURS=24
+SCOUT_REQUIRE_TIMESTAMP_FOR_ALL_SOURCES=true
+SCOUT_ALLOW_URL_DATE_FALLBACK=false
 ```
+If `FRESHRSS_FEED_URL` contains `&`, keep the full value as a single line in `.env` (do not use unsafe `sed` replacement without escaping `&`).
 
 2. Start stack:
 ```bash
@@ -232,7 +242,7 @@ uvicorn app.main:app --reload --port 8000
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/health` | System health check |
+| `GET` | `/health` | Lightweight health check with live DB ping, Redis status, app version, and uptime |
 | `GET` | `/docs` | Interactive API documentation (Swagger) |
 | `GET` | `/redoc` | Alternative API documentation |
 
@@ -331,7 +341,7 @@ pytest tests/test_utils.py -v
 - **Zero Trust**: All inputs sanitized (XSS, injection protection)
 - **No Hardcoded Secrets**: Everything via environment variables
 - **CORS**: Configurable allowed origins
-- **Input Validation**: Pydantic schemas on all endpoints
+- **Input Validation**: Pydantic models on JSON/body endpoints, plus FastAPI validation for query, form, file, and path inputs
 - **Error Isolation**: Global exception handler prevents info leaks
 
 ---
@@ -395,6 +405,9 @@ TOKEN=$(curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/login \
 curl -sS "http://127.0.0.1:8000/api/v1/dashboard/stats" -H "Authorization: Bearer $TOKEN"
 curl -sS "http://127.0.0.1:8000/api/v1/jobs/queues/depth" -H "Authorization: Bearer $TOKEN"
 ```
+
+`/health` returns runtime status fields for `status`, `version`, `database`, `redis`, and `uptime_seconds`.
+The database field is produced from a live `SELECT 1` ping; if DB or Redis is unavailable, the endpoint stays HTTP 200 but returns `status="degraded"`.
 
 For queue debugging and operator playbook, see:
 

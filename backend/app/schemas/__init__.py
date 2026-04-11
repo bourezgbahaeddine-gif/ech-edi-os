@@ -226,8 +226,8 @@ class PaginatedResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.0.0"
-    database: str = "connected"
+    version: str = "1.1.0"
+    database: str = "unknown"
     redis: str = "connected"
     uptime_seconds: float = 0
 

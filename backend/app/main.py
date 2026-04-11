@@ -761,14 +761,21 @@ app.include_router(telemetry_router, prefix="/api/v1")
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
-    """System health check endpoint."""
+    """Lightweight health check with live database and Redis status."""
     uptime = round(time.time() - _start_time, 2)
     redis_status = "connected" if cache_service.connected else "disconnected"
+    database_status = "connected"
+
+    try:
+        async with async_session() as db:
+            await db.execute(select(1))
+    except Exception:
+        database_status = "disconnected"
 
     return HealthResponse(
-        status="ok",
-        version="1.0.0",
-        database="connected",
+        status="ok" if database_status == "connected" and redis_status == "connected" else "degraded",
+        version=app.version,
+        database=database_status,
         redis=redis_status,
         uptime_seconds=uptime,
     )
@@ -780,7 +787,7 @@ async def root():
     return {
         "name": "Echorouk Editorial OS",
         "name_ar": "نظام التشغيل الذكي لسير العمل التحريري",
-        "version": "1.1.0",
+        "version": app.version,
         "release_name": "Async AI Isolation",
         "status": "operational",
         "docs": "/docs",
