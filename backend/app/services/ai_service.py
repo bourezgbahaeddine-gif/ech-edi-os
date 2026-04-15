@@ -65,6 +65,23 @@ class AIService:
             self._groq_client = Groq(api_key=api_key)
         return self._groq_client
 
+    @staticmethod
+    def _sanitize_error_for_logs(error: Exception) -> str:
+        """Sanitize error messages to prevent leaking secrets in logs."""
+        import re
+        message = str(error)
+        patterns = [
+            (r'(?i)(api[_-]?key|apikey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(secret[_-]?key|secretkey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(authorization)\s*[=:]\s*["\']?(bearer\s+[a-zA-Z0-9_\-\.]+)["\']?', r'\1=[REDACTED]'),
+            (r'(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})', 'bearer=[REDACTED]'),
+            (r'(?i)(password|passwd|pwd)\s*[=:]\s*["\']?([^"\'\s]{4,})["\']?', r'\1=[REDACTED]'),
+        ]
+        result = message
+        for pattern, replacement in patterns:
+            result = re.sub(pattern, replacement, result)
+        return result
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30))
     async def analyze_news(self, text: str, source: str = "") -> AIAnalysisResult:
         """
@@ -121,14 +138,14 @@ Output Schema (JSON only, no markdown):
             return AIAnalysisResult(**data)
 
         except json.JSONDecodeError as e:
-            logger.error("ai_json_parse_error", error=str(e))
+            logger.error("ai_json_parse_error", error=self._sanitize_error_for_logs(e))
             return AIAnalysisResult()
         except Exception as e:
             if self._is_rate_limited_error(e):
                 # Fast-fail for quota saturation to avoid expensive retry storms.
-                logger.warning("ai_analysis_rate_limited", error=str(e))
+                logger.warning("ai_analysis_rate_limited", error=self._sanitize_error_for_logs(e))
                 return AIAnalysisResult()
-            logger.error("ai_analysis_error", error=str(e))
+            logger.error("ai_analysis_error", error=self._sanitize_error_for_logs(e))
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30))
@@ -209,7 +226,7 @@ SEO:
             return self._parse_json_response(result_text)
 
         async def _fallback(provider_name: str, exc: Exception) -> dict:
-            logger.warning("provider_rewrite_failed", provider=provider_name, error=str(exc), msg="retry_with_fallback_provider")
+            logger.warning("provider_rewrite_failed", provider=provider_name, error=self._sanitize_error_for_logs(exc), msg="retry_with_fallback_provider")
             alt = "gemini" if provider_name != "gemini" else "groq"
             return await _run(alt)
 
@@ -220,7 +237,7 @@ SEO:
                 route_context=route_context or {"queue_name": "ai_quality", "urgency": "normal"},
             )
         except Exception as e:  # noqa: BLE001
-            logger.error("rewrite_all_providers_failed", error=str(e))
+            logger.error("rewrite_all_providers_failed", error=self._sanitize_error_for_logs(e))
 
         return {"headline": "", "body_html": content, "seo_title": "", "seo_description": "", "tags": []}
 
@@ -250,8 +267,8 @@ Rules:
             )
             return response.text
         except Exception as e:
-            logger.error("deep_analysis_error", error=str(e))
-            return f"تعذر إجراء التحليل المعمّق: {str(e)}"
+            logger.error("deep_analysis_error", error=self._sanitize_error_for_logs(e))
+            return f"تعذر إجراء التحليل المعمّق: [error redacted]"
 
     async def generate_radio_script(self, articles: list[dict]) -> str:
         """Generate a radio news script from a list of articles."""
@@ -281,7 +298,7 @@ Articles:
             response = model.generate_content(prompt)
             return response.text
         except Exception as e:
-            logger.error("radio_script_error", error=str(e))
+            logger.error("radio_script_error", error=self._sanitize_error_for_logs(e))
             return ""
 
     async def generate_text(self, prompt: str, route_context: dict | None = None) -> str:
@@ -307,7 +324,7 @@ Articles:
             return response.text.strip()
 
         async def _fallback(provider_name: str, exc: Exception) -> str:
-            logger.warning("provider_generate_text_failed", provider=provider_name, error=str(exc))
+            logger.warning("provider_generate_text_failed", provider=provider_name, error=self._sanitize_error_for_logs(exc))
             alt = "gemini" if provider_name != "gemini" else "groq"
             return await _run(alt)
 
@@ -318,7 +335,7 @@ Articles:
                 route_context=route_context or {"queue_name": "ai_scribe", "urgency": "normal"},
             )
         except Exception as e:
-            logger.error("generate_text_error", error=str(e))
+            logger.error("generate_text_error", error=self._sanitize_error_for_logs(e))
             return ""
 
     async def generate_json(self, prompt: str, route_context: dict | None = None) -> dict:
@@ -329,7 +346,7 @@ Articles:
                 return {}
             return self._parse_json_response(text)
         except Exception as e:
-            logger.error("generate_json_error", error=str(e))
+            logger.error("generate_json_error", error=self._sanitize_error_for_logs(e))
             return {}
 
     async def analyze_image_url(self, image_url: str, prompt: str) -> str:
@@ -349,7 +366,7 @@ Articles:
             response = model.generate_content([prompt, image_bytes])
             return response.text.strip()
         except Exception as e:
-            logger.error("vision_error", error=str(e))
+            logger.error("vision_error", error=self._sanitize_error_for_logs(e))
             return ""
 
 

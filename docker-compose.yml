@@ -66,7 +66,7 @@ services:
       args:
         INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
     container_name: ech-flower
-    command: celery -A app.queue.celery_app:celery_app flower --port=5555
+    command: celery -A app.queue.celery_app:celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH_USER:-admin}:${FLOWER_BASIC_AUTH_PASSWORD:-change_me_flower_password}
     env_file:
       - .env
     environment:
@@ -79,7 +79,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     restart: unless-stopped
     networks:
       - ech-network
@@ -104,8 +104,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-echorouk_db}
       POSTGRES_USER: ${POSTGRES_USER:-echorouk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echorouk2025secure}
-    ports:
-      - "5433:5432"
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql

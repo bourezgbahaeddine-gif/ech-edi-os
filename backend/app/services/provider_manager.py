@@ -203,11 +203,29 @@ class ProviderManager:
         st = self._state.setdefault(provider, ProviderState())
         st.calls += 1
         st.consecutive_failures += 1
-        st.last_error = error[:500]
+        # Redact sensitive data from error message before storing
+        st.last_error = self._sanitize_error(error)[:500]
         if st.consecutive_failures >= settings.provider_circuit_failures:
             st.open_until = datetime.utcnow() + timedelta(seconds=settings.provider_circuit_open_sec)
             st.healthy = False
             logger.warning("provider_circuit_open", provider=provider, open_seconds=settings.provider_circuit_open_sec)
+
+    @staticmethod
+    def _sanitize_error(error: str) -> str:
+        """Sanitize error messages to prevent leaking secrets."""
+        import re
+        # Remove potential API keys, tokens, etc. from error messages
+        patterns = [
+            (r'(?i)(api[_-]?key|apikey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(secret[_-]?key|secretkey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(authorization)\s*[=:]\s*["\']?(bearer\s+[a-zA-Z0-9_\-\.]+)["\']?', r'\1=[REDACTED]'),
+            (r'(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})', 'bearer=[REDACTED]'),
+            (r'(?i)(password|passwd|pwd)\s*[=:]\s*["\']?([^"\'\s]{4,})["\']?', r'\1=[REDACTED]'),
+        ]
+        result = error
+        for pattern, replacement in patterns:
+            result = re.sub(pattern, replacement, result)
+        return result
 
     async def call(self, *, run_fn: Any, fallback_fn: Any | None = None, route_context: dict[str, Any] | None = None) -> Any:
         """Run provider call with automatic fallback.
