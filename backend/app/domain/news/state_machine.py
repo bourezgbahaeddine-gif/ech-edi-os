@@ -10,7 +10,12 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
     NewsStatus.NEW: {NewsStatus.CLEANED, NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
     NewsStatus.CLEANED: {NewsStatus.DEDUPED, NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
     NewsStatus.DEDUPED: {NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
-    NewsStatus.CLASSIFIED: {NewsStatus.CANDIDATE, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
+    NewsStatus.CLASSIFIED: {
+        NewsStatus.CANDIDATE,
+        NewsStatus.APPROVED_HANDOFF,
+        NewsStatus.ARCHIVED,
+        NewsStatus.REJECTED,
+    },
     NewsStatus.CANDIDATE: {NewsStatus.APPROVED, NewsStatus.REJECTED, NewsStatus.APPROVED_HANDOFF},
     NewsStatus.APPROVED: {NewsStatus.APPROVED_HANDOFF, NewsStatus.DRAFT_GENERATED, NewsStatus.ARCHIVED},
     NewsStatus.APPROVED_HANDOFF: {NewsStatus.DRAFT_GENERATED, NewsStatus.ARCHIVED},
@@ -35,7 +40,7 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
     },
     NewsStatus.READY_FOR_MANUAL_PUBLISH: {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED},
     NewsStatus.PUBLISHED: {NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.ARCHIVED},
-    NewsStatus.REJECTED: set(),
+    NewsStatus.REJECTED: {NewsStatus.APPROVED_HANDOFF},
     NewsStatus.ARCHIVED: set(),
 }
 

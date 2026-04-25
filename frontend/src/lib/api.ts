@@ -3240,6 +3240,46 @@ export const telemetryApi = {
     recent: (limit = 30) => api.get<UxTelemetryRecentItem[]>('/telemetry/ux/recent', { params: { limit } }),
 };
 
+function normalizeApiErrorDetail(detail: unknown, fallback = 'Request failed'): string {
+    if (typeof detail === 'string' && detail.trim()) return detail;
+
+    if (Array.isArray(detail)) {
+        const parts = detail
+            .map((item) => {
+                if (typeof item === 'string') return item.trim();
+                if (!item || typeof item !== 'object') return '';
+                const candidate = item as Record<string, unknown>;
+                const message = candidate.msg ?? candidate.message ?? candidate.detail;
+                return typeof message === 'string' ? message.trim() : '';
+            })
+            .filter(Boolean);
+        if (parts.length) return parts.join(' | ');
+    }
+
+    if (detail && typeof detail === 'object') {
+        const candidate = detail as Record<string, unknown>;
+        if (typeof candidate.message === 'string' && candidate.message.trim()) {
+            return candidate.message.trim();
+        }
+        if (typeof candidate.detail === 'string' && candidate.detail.trim()) {
+            return candidate.detail.trim();
+        }
+        if (
+            typeof candidate.from_state === 'string'
+            && typeof candidate.to_state === 'string'
+        ) {
+            const allowed = Array.isArray(candidate.allowed_targets)
+                ? candidate.allowed_targets.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                : [];
+            return allowed.length
+                ? `State conflict: ${candidate.from_state} -> ${candidate.to_state}. Allowed: ${allowed.join(', ')}`
+                : `State conflict: ${candidate.from_state} -> ${candidate.to_state}`;
+        }
+    }
+
+    return fallback;
+}
+
 api.interceptors.response.use(
     (response) => {
         if (isApiEnvelope(response.data)) {
@@ -3249,12 +3289,16 @@ api.interceptors.response.use(
             }
 
             const envelopeError = response.data.error;
+            const detailMessage = normalizeApiErrorDetail(
+                envelopeError?.details,
+                envelopeError?.message || 'Request failed',
+            );
             const wrappedError = {
-                ...new Error(envelopeError?.message || 'Request failed'),
+                ...new Error(detailMessage),
                 response: {
                     ...response,
                     data: {
-                        detail: envelopeError?.message || 'Request failed',
+                        detail: detailMessage,
                         code: envelopeError?.code || 'api_error',
                         details: envelopeError?.details,
                     },
@@ -3267,8 +3311,12 @@ api.interceptors.response.use(
     (error) => {
         if (error?.response?.data && isApiEnvelope(error.response.data)) {
             const envelopeError = error.response.data.error;
+            const detailMessage = normalizeApiErrorDetail(
+                envelopeError?.details,
+                envelopeError?.message || 'Request failed',
+            );
             error.response.data = {
-                detail: envelopeError?.message || 'Request failed',
+                detail: detailMessage,
                 code: envelopeError?.code || 'api_error',
                 details: envelopeError?.details,
                 meta: error.response.data.meta || {},

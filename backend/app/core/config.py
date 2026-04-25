@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     published_monitor_llm_items_limit: int = 4
     published_monitor_fetch_timeout: int = 12
     published_monitor_alert_threshold: int = 75
+    published_monitor_max_concurrent_tasks: int = 2
     event_reminders_enabled: bool = True
     event_reminders_interval_minutes: int = 15
     time_integrity_cleanup_enabled: bool = False
