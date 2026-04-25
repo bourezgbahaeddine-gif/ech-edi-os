@@ -81,6 +81,15 @@ from app.models.document_intel import (
     DocumentIntelClaim,
     DocumentIntelAction,
 )
+from app.models.mil import (
+    MILSignal,
+    MILSignalSource,
+    MILEntity,
+    MILEntityEdge,
+    MILSourceTrustScore,
+    MILCluster,
+    MILClusterArticle,
+)
 
 __all__ = [
     "Source", "Article", "EditorDecision", "EditorialDraft", "FeedbackLog",
@@ -155,4 +164,11 @@ __all__ = [
     "DocumentIntelDocument",
     "DocumentIntelClaim",
     "DocumentIntelAction",
+    "MILSignal",
+    "MILSignalSource",
+    "MILEntity",
+    "MILEntityEdge",
+    "MILSourceTrustScore",
+    "MILCluster",
+    "MILClusterArticle",
 ]

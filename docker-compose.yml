@@ -23,9 +23,9 @@ services:
       redis:
         condition: service_healthy
       freshrss:
-        condition: service_started
+        condition: service_healthy
       rssbridge:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - ech-network
@@ -66,7 +66,7 @@ services:
       args:
         INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
     container_name: ech-flower
-    command: celery -A app.queue.celery_app:celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH_USER:-admin}:${FLOWER_BASIC_AUTH_PASSWORD:-change_me_flower_password}
+    command: celery -A app.queue.celery_app:celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH_USER?FLOWER_BASIC_AUTH_USER is required}:${FLOWER_BASIC_AUTH_PASSWORD?FLOWER_BASIC_AUTH_PASSWORD is required}
     env_file:
       - .env
     environment:
@@ -88,7 +88,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+        NEXT_PUBLIC_FLOWER_URL: ${NEXT_PUBLIC_FLOWER_URL:-http://127.0.0.1:5555}
+        NEXT_PUBLIC_BREAKING_TTL_MINUTES: ${NEXT_PUBLIC_BREAKING_TTL_MINUTES:-60}
     container_name: ech-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+      NEXT_PUBLIC_FLOWER_URL: ${NEXT_PUBLIC_FLOWER_URL:-http://127.0.0.1:5555}
+      NEXT_PUBLIC_BREAKING_TTL_MINUTES: ${NEXT_PUBLIC_BREAKING_TTL_MINUTES:-60}
     ports:
       - "3000:3000"
     depends_on:
@@ -103,7 +111,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-echorouk_db}
       POSTGRES_USER: ${POSTGRES_USER:-echorouk}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echorouk2025secure}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     expose:
       - "5432"
     volumes:
@@ -122,13 +130,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ech-redis
-    command: redis-server --appendonly yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD?REDIS_PASSWORD is required}
+    command: sh -c 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -141,13 +151,18 @@ services:
     container_name: ech-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     networks:
       - ech-network
@@ -156,10 +171,10 @@ services:
     image: mariadb:11
     container_name: ech-freshrss-db
     environment:
-      MYSQL_ROOT_PASSWORD: ${FRESHRSS_DB_ROOT_PASSWORD:-freshrss_root_change_me}
+      MYSQL_ROOT_PASSWORD: ${FRESHRSS_DB_ROOT_PASSWORD?FRESHRSS_DB_ROOT_PASSWORD is required}
       MYSQL_DATABASE: ${FRESHRSS_DB_NAME:-freshrss}
       MYSQL_USER: ${FRESHRSS_DB_USER:-freshrss}
-      MYSQL_PASSWORD: ${FRESHRSS_DB_PASSWORD:-freshrss_change_me}
+      MYSQL_PASSWORD: ${FRESHRSS_DB_PASSWORD?FRESHRSS_DB_PASSWORD is required}
     volumes:
       - freshrss_db_data:/var/lib/mysql
     healthcheck:
@@ -185,20 +200,26 @@ services:
         --base-url ${FRESHRSS_BASE_URL:-https://echswarm.agentdz.com/freshrss}
         --db-base ${FRESHRSS_DB_NAME:-freshrss}
         --db-host freshrss-db
-        --db-password ${FRESHRSS_DB_PASSWORD:-freshrss_change_me}
+        --db-password ${FRESHRSS_DB_PASSWORD?FRESHRSS_DB_PASSWORD is required}
         --db-type mysql
         --db-user ${FRESHRSS_DB_USER:-freshrss}
         --default-user ${FRESHRSS_ADMIN_USER:-admin}
         --language ar
         --auth-type form
       FRESHRSS_USER: |-
-        --api-password=${FRESHRSS_API_PASSWORD:-change_me_api_password}
+        --api-password=${FRESHRSS_API_PASSWORD?FRESHRSS_API_PASSWORD is required}
         --email=${FRESHRSS_ADMIN_EMAIL:-admin@localhost}
         --language=ar
-        --password=${FRESHRSS_ADMIN_PASSWORD:-change_me_admin_password}
+        --password=${FRESHRSS_ADMIN_PASSWORD?FRESHRSS_ADMIN_PASSWORD is required}
         --user=${FRESHRSS_ADMIN_USER:-admin}
     ports:
       - "8082:80"
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1/i/')===false?1:0);\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     volumes:
       - freshrss_data:/var/www/FreshRSS/data
       - freshrss_extensions:/var/www/FreshRSS/extensions
@@ -211,6 +232,12 @@ services:
     container_name: ech-rssbridge
     ports:
       - "8083:80"
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1/')===false?1:0);\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     volumes:
       - ./docs/rssbridge/whitelist.txt:/app/whitelist.txt:ro
     restart: unless-stopped

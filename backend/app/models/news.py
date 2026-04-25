@@ -104,7 +104,7 @@ class Article(Base):
 
     # ── Raw Data ──
     original_title = Column(String(1024), nullable=False)
-    original_url = Column(String(2048), nullable=False)
+    original_url = Column(Text, nullable=False)
     original_content = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=True)
     crawled_at = Column(DateTime, default=datetime.utcnow)

@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feeds version="1.0" source="Google News Search RSS">
+  <metadata>
+    <title>Editorial Google Search Feeds</title>
+    <description>Curated Google News search RSS feeds for newsroom monitoring where direct RSS is missing.</description>
+    <generatedAt>2026-04-21</generatedAt>
+    <recommendedImport>Use these feeds as supplemental monitoring sources, not as a replacement for strong direct RSS feeds.</recommendedImport>
+  </metadata>
+
+  <category name="Algeria_General" title="الجزائر - عام">
+    <feed name="GN Algeria - General Arabic" language="ar" priority="high"
+      query="الجزائر"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algerie - General French" language="fr" priority="high"
+      query="Algérie"
+      htmlUrl="https://news.google.com/search?q=Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr"
+      xmlUrl="https://news.google.com/rss/search?q=Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr" />
+    <feed name="GN Echorouk Mentions" language="ar" priority="medium"
+      query="الشروق الجزائر"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%B4%D8%B1%D9%88%D9%82+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%B4%D8%B1%D9%88%D9%82+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algiers Capital" language="ar" priority="medium"
+      query="الجزائر العاصمة"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A7%D9%84%D8%B9%D8%A7%D8%B5%D9%85%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A7%D9%84%D8%B9%D8%A7%D8%B5%D9%85%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Politics_Governance" title="السياسة والحكم">
+    <feed name="GN Algerian Presidency" language="ar" priority="high"
+      query="رئاسة الجمهورية الجزائرية"
+      htmlUrl="https://news.google.com/search?q=%D8%B1%D8%A6%D8%A7%D8%B3%D8%A9+%D8%A7%D9%84%D8%AC%D9%85%D9%87%D9%88%D8%B1%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%B1%D8%A6%D8%A7%D8%B3%D8%A9+%D8%A7%D9%84%D8%AC%D9%85%D9%87%D9%88%D8%B1%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algerian Government" language="ar" priority="high"
+      query="الحكومة الجزائرية"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algerian Parliament" language="ar" priority="medium"
+      query="المجلس الشعبي الوطني الجزائر"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D9%85%D8%AC%D9%84%D8%B3+%D8%A7%D9%84%D8%B4%D8%B9%D8%A8%D9%8A+%D8%A7%D9%84%D9%88%D8%B7%D9%86%D9%8A+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D9%85%D8%AC%D9%84%D8%B3+%D8%A7%D9%84%D8%B4%D8%B9%D8%A8%D9%8A+%D8%A7%D9%84%D9%88%D8%B7%D9%86%D9%8A+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Diplomacy" language="ar" priority="high"
+      query="الدبلوماسية الجزائرية"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AF%D8%A8%D9%84%D9%88%D9%85%D8%A7%D8%B3%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AF%D8%A8%D9%84%D9%88%D9%85%D8%A7%D8%B3%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Economy_Business" title="الاقتصاد والأعمال">
+    <feed name="GN Algeria Economy" language="ar" priority="high"
+      query="الاقتصاد الجزائري"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%A7%D9%82%D8%AA%D8%B5%D8%A7%D8%AF+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Banking Finance" language="ar" priority="high"
+      query="بنوك الجزائر تمويل استثمار"
+      htmlUrl="https://news.google.com/search?q=%D8%A8%D9%86%D9%88%D9%83+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AA%D9%85%D9%88%D9%8A%D9%84+%D8%A7%D8%B3%D8%AA%D8%AB%D9%85%D8%A7%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A8%D9%86%D9%88%D9%83+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AA%D9%85%D9%88%D9%8A%D9%84+%D8%A7%D8%B3%D8%AA%D8%AB%D9%85%D8%A7%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Companies" language="fr" priority="medium"
+      query="entreprises Algérie investissement"
+      htmlUrl="https://news.google.com/search?q=entreprises+Alg%C3%A9rie+investissement&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr"
+      xmlUrl="https://news.google.com/rss/search?q=entreprises+Alg%C3%A9rie+investissement&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr" />
+    <feed name="GN Global Markets Algeria Angle" language="en" priority="medium"
+      query="Algeria markets inflation trade"
+      htmlUrl="https://news.google.com/search?q=Algeria+markets+inflation+trade&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=Algeria+markets+inflation+trade&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+  </category>
+
+  <category name="Energy_Climate" title="الطاقة والمناخ">
+    <feed name="GN Sonatrach Energy" language="fr" priority="high"
+      query="Sonatrach gaz export Algérie"
+      htmlUrl="https://news.google.com/search?q=Sonatrach+gaz+export+Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr"
+      xmlUrl="https://news.google.com/rss/search?q=Sonatrach+gaz+export+Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr" />
+    <feed name="GN Algeria Oil Gas" language="en" priority="high"
+      query="Algeria oil gas LNG Sonatrach"
+      htmlUrl="https://news.google.com/search?q=Algeria+oil+gas+LNG+Sonatrach&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=Algeria+oil+gas+LNG+Sonatrach&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+    <feed name="GN OPEC Energy Prices" language="en" priority="high"
+      query="OPEC oil prices production cut"
+      htmlUrl="https://news.google.com/search?q=OPEC+oil+prices+production+cut&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=OPEC+oil+prices+production+cut&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+    <feed name="GN Algeria Renewable Energy" language="ar" priority="medium"
+      query="الجزائر الطاقة المتجددة"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A7%D9%84%D8%B7%D8%A7%D9%82%D8%A9+%D8%A7%D9%84%D9%85%D8%AA%D8%AC%D8%AF%D8%AF%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A7%D9%84%D8%B7%D8%A7%D9%82%D8%A9+%D8%A7%D9%84%D9%85%D8%AA%D8%AC%D8%AF%D8%AF%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Climate Weather" language="ar" priority="medium"
+      query="الجزائر مناخ جفاف طقس"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D9%85%D9%86%D8%A7%D8%AE+%D8%AC%D9%81%D8%A7%D9%81+%D8%B7%D9%82%D8%B3&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D9%85%D9%86%D8%A7%D8%AE+%D8%AC%D9%81%D8%A7%D9%81+%D8%B7%D9%82%D8%B3&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Justice_Security" title="العدالة والأمن">
+    <feed name="GN Algeria Justice" language="ar" priority="high"
+      query="العدالة الجزائرية محكمة فساد"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%B9%D8%AF%D8%A7%D9%84%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9+%D9%85%D8%AD%D9%83%D9%85%D8%A9+%D9%81%D8%B3%D8%A7%D8%AF&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%B9%D8%AF%D8%A7%D9%84%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A%D8%A9+%D9%85%D8%AD%D9%83%D9%85%D8%A9+%D9%81%D8%B3%D8%A7%D8%AF&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Security" language="ar" priority="high"
+      query="الأمن الجزائر إرهاب جريمة"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%A3%D9%85%D9%86+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A5%D8%B1%D9%87%D8%A7%D8%A8+%D8%AC%D8%B1%D9%8A%D9%85%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%A3%D9%85%D9%86+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%A5%D8%B1%D9%87%D8%A7%D8%A8+%D8%AC%D8%B1%D9%8A%D9%85%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Civil Protection Emergencies" language="ar" priority="high"
+      query="الحماية المدنية الجزائر حريق فيضانات"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AD%D9%85%D8%A7%D9%8A%D8%A9+%D8%A7%D9%84%D9%85%D8%AF%D9%86%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AD%D8%B1%D9%8A%D9%82+%D9%81%D9%8A%D8%B6%D8%A7%D9%86%D8%A7%D8%AA&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AD%D9%85%D8%A7%D9%8A%D8%A9+%D8%A7%D9%84%D9%85%D8%AF%D9%86%D9%8A%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AD%D8%B1%D9%8A%D9%82+%D9%81%D9%8A%D8%B6%D8%A7%D9%86%D8%A7%D8%AA&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="International_Geopolitics" title="الدولي والجيوسياسة">
+    <feed name="GN Middle East Conflicts" language="ar" priority="high"
+      query="الشرق الأوسط حرب هدنة مفاوضات"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%B4%D8%B1%D9%82+%D8%A7%D9%84%D8%A3%D9%88%D8%B3%D8%B7+%D8%AD%D8%B1%D8%A8+%D9%87%D8%AF%D9%86%D8%A9+%D9%85%D9%81%D8%A7%D9%88%D8%B6%D8%A7%D8%AA&amp;hl=ar&amp;gl=AE&amp;ceid=AE:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%B4%D8%B1%D9%82+%D8%A7%D9%84%D8%A3%D9%88%D8%B3%D8%B7+%D8%AD%D8%B1%D8%A8+%D9%87%D8%AF%D9%86%D8%A9+%D9%85%D9%81%D8%A7%D9%88%D8%B6%D8%A7%D8%AA&amp;hl=ar&amp;gl=AE&amp;ceid=AE:ar" />
+    <feed name="GN Maghreb Politics" language="fr" priority="high"
+      query="Maghreb diplomatie conflit"
+      htmlUrl="https://news.google.com/search?q=Maghreb+diplomatie+conflit&amp;hl=fr&amp;gl=MA&amp;ceid=MA:fr"
+      xmlUrl="https://news.google.com/rss/search?q=Maghreb+diplomatie+conflit&amp;hl=fr&amp;gl=MA&amp;ceid=MA:fr" />
+    <feed name="GN Sahel Security" language="fr" priority="high"
+      query="Sahel sécurité Mali Niger terrorisme"
+      htmlUrl="https://news.google.com/search?q=Sahel+s%C3%A9curit%C3%A9+Mali+Niger+terrorisme&amp;hl=fr&amp;gl=FR&amp;ceid=FR:fr"
+      xmlUrl="https://news.google.com/rss/search?q=Sahel+s%C3%A9curit%C3%A9+Mali+Niger+terrorisme&amp;hl=fr&amp;gl=FR&amp;ceid=FR:fr" />
+    <feed name="GN Global Diplomacy" language="en" priority="medium"
+      query="UN diplomacy sanctions summit ceasefire"
+      htmlUrl="https://news.google.com/search?q=UN+diplomacy+sanctions+summit+ceasefire&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=UN+diplomacy+sanctions+summit+ceasefire&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+  </category>
+
+  <category name="Sports" title="الرياضة">
+    <feed name="GN Algeria Football" language="ar" priority="high"
+      query="المنتخب الجزائري كرة القدم"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D9%85%D9%86%D8%AA%D8%AE%D8%A8+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D9%83%D8%B1%D8%A9+%D8%A7%D9%84%D9%82%D8%AF%D9%85&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D9%85%D9%86%D8%AA%D8%AE%D8%A8+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D9%83%D8%B1%D8%A9+%D8%A7%D9%84%D9%82%D8%AF%D9%85&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algerian League" language="ar" priority="medium"
+      query="الدوري الجزائري"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AF%D9%88%D8%B1%D9%8A+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AF%D9%88%D8%B1%D9%8A+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN CAF Africa Football" language="fr" priority="medium"
+      query="CAF football Afrique Algérie"
+      htmlUrl="https://news.google.com/search?q=CAF+football+Afrique+Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr"
+      xmlUrl="https://news.google.com/rss/search?q=CAF+football+Afrique+Alg%C3%A9rie&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr" />
+  </category>
+
+  <category name="Technology_AI_Cyber" title="التكنولوجيا والذكاء الاصطناعي والأمن السيبراني">
+    <feed name="GN AI Policy" language="en" priority="high"
+      query="artificial intelligence regulation policy OpenAI Google Meta"
+      htmlUrl="https://news.google.com/search?q=artificial+intelligence+regulation+policy+OpenAI+Google+Meta&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=artificial+intelligence+regulation+policy+OpenAI+Google+Meta&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+    <feed name="GN Cybersecurity Alerts" language="en" priority="high"
+      query="cybersecurity breach ransomware zero day"
+      htmlUrl="https://news.google.com/search?q=cybersecurity+breach+ransomware+zero+day&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=cybersecurity+breach+ransomware+zero+day&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+    <feed name="GN Algeria Technology" language="ar" priority="medium"
+      query="الجزائر تكنولوجيا ذكاء اصطناعي رقمنة"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AA%D9%83%D9%86%D9%88%D9%84%D9%88%D8%AC%D9%8A%D8%A7+%D8%B0%D9%83%D8%A7%D8%A1+%D8%A7%D8%B5%D8%B7%D9%86%D8%A7%D8%B9%D9%8A+%D8%B1%D9%82%D9%85%D9%86%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AA%D9%83%D9%86%D9%88%D9%84%D9%88%D8%AC%D9%8A%D8%A7+%D8%B0%D9%83%D8%A7%D8%A1+%D8%A7%D8%B5%D8%B7%D9%86%D8%A7%D8%B9%D9%8A+%D8%B1%D9%82%D9%85%D9%86%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Society_Health_Education" title="المجتمع والصحة والتعليم">
+    <feed name="GN Algeria Health" language="ar" priority="high"
+      query="الصحة الجزائر مستشفيات أوبئة"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%B5%D8%AD%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D9%85%D8%B3%D8%AA%D8%B4%D9%81%D9%8A%D8%A7%D8%AA+%D8%A3%D9%88%D8%A8%D8%A6%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%B5%D8%AD%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D9%85%D8%B3%D8%AA%D8%B4%D9%81%D9%8A%D8%A7%D8%AA+%D8%A3%D9%88%D8%A8%D8%A6%D8%A9&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Education" language="ar" priority="medium"
+      query="التعليم الجزائر جامعة مدرسة بكالوريا"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AC%D8%A7%D9%85%D8%B9%D8%A9+%D9%85%D8%AF%D8%B1%D8%B3%D8%A9+%D8%A8%D9%83%D8%A7%D9%84%D9%88%D8%B1%D9%8A%D8%A7&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%AC%D8%A7%D9%85%D8%B9%D8%A9+%D9%85%D8%AF%D8%B1%D8%B3%D8%A9+%D8%A8%D9%83%D8%A7%D9%84%D9%88%D8%B1%D9%8A%D8%A7&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Society" language="ar" priority="medium"
+      query="المجتمع الجزائري بطالة سكن نقل"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D9%85%D8%AC%D8%AA%D9%85%D8%B9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D8%A8%D8%B7%D8%A7%D9%84%D8%A9+%D8%B3%D9%83%D9%86+%D9%86%D9%82%D9%84&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D9%85%D8%AC%D8%AA%D9%85%D8%B9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D8%A8%D8%B7%D8%A7%D9%84%D8%A9+%D8%B3%D9%83%D9%86+%D9%86%D9%82%D9%84&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Culture_Media" title="الثقافة والإعلام">
+    <feed name="GN Algeria Culture" language="ar" priority="medium"
+      query="الثقافة الجزائر سينما كتاب مهرجان"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AB%D9%82%D8%A7%D9%81%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B3%D9%8A%D9%86%D9%85%D8%A7+%D9%83%D8%AA%D8%A7%D8%A8+%D9%85%D9%87%D8%B1%D8%AC%D8%A7%D9%86&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AB%D9%82%D8%A7%D9%81%D8%A9+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B3%D9%8A%D9%86%D9%85%D8%A7+%D9%83%D8%AA%D8%A7%D8%A8+%D9%85%D9%87%D8%B1%D8%AC%D8%A7%D9%86&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Media" language="ar" priority="medium"
+      query="الإعلام الجزائري صحافة تلفزيون رقمي"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%A5%D8%B9%D9%84%D8%A7%D9%85+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D8%B5%D8%AD%D8%A7%D9%81%D8%A9+%D8%AA%D9%84%D9%81%D8%B2%D9%8A%D9%88%D9%86+%D8%B1%D9%82%D9%85%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%A5%D8%B9%D9%84%D8%A7%D9%85+%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1%D9%8A+%D8%B5%D8%AD%D8%A7%D9%81%D8%A9+%D8%AA%D9%84%D9%81%D8%B2%D9%8A%D9%88%D9%86+%D8%B1%D9%82%D9%85%D9%8A&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+  </category>
+
+  <category name="Breaking_Alerts" title="العاجل والتنبيهات">
+    <feed name="GN Algeria Breaking" language="ar" priority="high"
+      query="الجزائر عاجل"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B9%D8%A7%D8%AC%D9%84&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B9%D8%A7%D8%AC%D9%84&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Algeria Urgent Security" language="ar" priority="high"
+      query="الجزائر عاجل حريق فيضانات انفجار"
+      htmlUrl="https://news.google.com/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B9%D8%A7%D8%AC%D9%84+%D8%AD%D8%B1%D9%8A%D9%82+%D9%81%D9%8A%D8%B6%D8%A7%D9%86%D8%A7%D8%AA+%D8%A7%D9%86%D9%81%D8%AC%D8%A7%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar"
+      xmlUrl="https://news.google.com/rss/search?q=%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1+%D8%B9%D8%A7%D8%AC%D9%84+%D8%AD%D8%B1%D9%8A%D9%82+%D9%81%D9%8A%D8%B6%D8%A7%D9%86%D8%A7%D8%AA+%D8%A7%D9%86%D9%81%D8%AC%D8%A7%D8%B1&amp;hl=ar&amp;gl=DZ&amp;ceid=DZ:ar" />
+    <feed name="GN Global Breaking" language="en" priority="medium"
+      query="breaking news live updates"
+      htmlUrl="https://news.google.com/search?q=breaking+news+live+updates&amp;hl=en&amp;gl=US&amp;ceid=US:en"
+      xmlUrl="https://news.google.com/rss/search?q=breaking+news+live+updates&amp;hl=en&amp;gl=US&amp;ceid=US:en" />
+  </category>
+</feeds>

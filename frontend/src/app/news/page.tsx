@@ -10,6 +10,7 @@ import { cn, formatRelativeTime, getStatusColor, getCategoryLabel, isFreshBreaki
 import { useAuth } from '@/lib/auth';
 import { WorkflowCard } from '@/components/workflow/WorkflowCard';
 import { WorkflowHelpPanel } from '@/components/workflow/WorkflowHelpPanel';
+import { NextActionBar } from '@/components/workflow/NextActionBar';
 import { trackNextAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
 import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay';
 import { useTutorialState } from '@/lib/tutorial';
@@ -394,6 +395,9 @@ function NewsPageContent() {
         return { label: 'أولوية عادية', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' };
     };
 
+    const recommendedArticle = visibleArticles[0];
+    const recommendedAction = recommendedArticle ? getNextActionForArticle(recommendedArticle) : null;
+
     return (
         <div className="space-y-6">
             <TutorialOverlay
@@ -451,6 +455,31 @@ function NewsPageContent() {
                         </button>
                     </div>
                 </div>
+
+                {recommendedArticle && recommendedAction && (
+                    <NextActionBar
+                        title={recommendedAction.label}
+                        description={getReasonForArticle(recommendedArticle)}
+                        href={recommendedAction.href}
+                        actionLabel={recommendedAction.label}
+                        tone={getImportanceTone(recommendedArticle)}
+                        meta={[
+                            recommendedArticle.source_name ? `المصدر: ${recommendedArticle.source_name}` : '',
+                            recommendedArticle.is_breaking ? 'خبر عاجل' : '',
+                            recommendedArticle.importance_score ? `الأهمية: ${recommendedArticle.importance_score}` : '',
+                        ].filter(Boolean)}
+                        onAction={() =>
+                            trackNextAction('news', recommendedAction.label, {
+                                ...surfaceDetails,
+                                queue_view: viewMode,
+                                article_id: recommendedArticle.id,
+                                article_status: recommendedArticle.status,
+                                target_href: recommendedAction.href,
+                                recommended: true,
+                            })
+                        }
+                    />
+                )}
 
                 <div className="rounded-2xl border border-white/10 bg-gray-900/45 p-4 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -901,4 +930,3 @@ export default function NewsPage() {
         </Suspense>
     );
 }
-

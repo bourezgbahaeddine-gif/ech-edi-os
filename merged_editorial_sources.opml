@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Echorouk Sources + Editorial Feeds (Merged)</title>
+    <dateCreated>Tue, 21 Apr 2026 15:17:40 GMT</dateCreated>
+  </head>
+  <body>
+    <outline text="Legacy Sources" title="Legacy Sources">
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠØ© (APS)" title="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠØ© (APS)" type="rss" xmlUrl="https://www.aps.dz/xml/rss"/>
+      <outline text="Ø§Ù„Ø®Ø¨Ø±" title="Ø§Ù„Ø®Ø¨Ø±" type="rss" xmlUrl="https://www.elkhabar.com/feed/"/>
+      <outline text="Ø§Ù„Ù†Ù‡Ø§Ø± Ø£ÙˆÙ†Ù„Ø§ÙŠÙ†" title="Ø§Ù„Ù†Ù‡Ø§Ø± Ø£ÙˆÙ†Ù„Ø§ÙŠÙ†" type="rss" xmlUrl="https://www.ennaharonline.com/feed/"/>
+      <outline text="TSA AlgÃ©rie" title="TSA AlgÃ©rie" type="rss" xmlUrl="https://www.tsa-algerie.com/feed/"/>
+      <outline text="AlgÃ©rie 360" title="AlgÃ©rie 360" type="rss" xmlUrl="https://www.algerie360.com/feed/"/>
+      <outline text="Express DZ" title="Express DZ" type="rss" xmlUrl="https://www.expressdz.dz/feed/"/>
+      <outline text="Le Matin d&apos;AlgÃ©rie" title="Le Matin d&apos;AlgÃ©rie" type="rss" xmlUrl="https://lematindalgerie.com/feed/"/>
+      <outline text="ObservAlgÃ©rie" title="ObservAlgÃ©rie" type="rss" xmlUrl="https://observalgerie.com/feed/"/>
+      <outline text="El Watan" title="El Watan" type="rss" xmlUrl="https://feeds.feedburner.com/elwatan/4pwdGeU2mTa"/>
+      <outline text="France 24 AlgÃ©rie" title="France 24 AlgÃ©rie" type="rss" xmlUrl="https://www.france24.com/fr/tag/alg%C3%A9rie/rss"/>
+      <outline text="RFI AlgÃ©rie" title="RFI AlgÃ©rie" type="rss" xmlUrl="https://www.rfi.fr/fr/tag/alg%C3%A9rie/rss"/>
+      <outline text="Le Monde AlgÃ©rie" title="Le Monde AlgÃ©rie" type="rss" xmlUrl="https://www.lemonde.fr/algerie/rss_full.xml"/>
+      <outline text="BFM TV AlgÃ©rie" title="BFM TV AlgÃ©rie" type="rss" xmlUrl="https://www.bfmtv.com/rss/international/afrique/algerie/"/>
+      <outline text="EURO News FranÃ§ais" title="EURO News FranÃ§ais" type="rss" xmlUrl="https://fr.euronews.com/rss"/>
+      <outline text="Google News AlgÃ©rie" title="Google News AlgÃ©rie" type="rss" xmlUrl="https://news.google.com/rss/search?tbm=nws&amp;q=Alg%E9rie&amp;hl=fr&amp;gl=FR&amp;ceid=FR:fr"/>
+      <outline text="Flipboard AlgÃ©rie" title="Flipboard AlgÃ©rie" type="rss" xmlUrl="https://flipboard.com/topic/fr-alg%C3%A9rie.rss"/>
+      <outline text="Express DZ Sport" title="Express DZ Sport" type="rss" xmlUrl="https://www.expressdz.dz/category/sport/feed/"/>
+      <outline text="TSA Sport" title="TSA Sport" type="rss" xmlUrl="https://www.tsa-algerie.com/category/sport/feed/"/>
+      <outline text="Express DZ Ã‰conomie" title="Express DZ Ã‰conomie" type="rss" xmlUrl="https://www.expressdz.dz/category/economie/feed/"/>
+      <outline text="TSA Ã‰conomie" title="TSA Ã‰conomie" type="rss" xmlUrl="https://www.tsa-algerie.com/category/economie/feed/"/>
+      <outline text="Express DZ Culture" title="Express DZ Culture" type="rss" xmlUrl="https://www.expressdz.dz/category/culture/feed/"/>
+      <outline text="Tamazgha" title="Tamazgha" type="rss" xmlUrl="https://tamazgha.fr/spip.php?page=backend"/>
+      <outline text="Kabyle.com" title="Kabyle.com" type="rss" xmlUrl="https://kabyle.com/feed"/>
+      <outline text="The Conversation AlgÃ©rie" title="The Conversation AlgÃ©rie" type="rss" xmlUrl="https://theconversation.com/topics/algerie-25902/articles.atom"/>
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠØ© (APS)" title="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠØ© (APS)" type="rss" xmlUrl="https://www.aps.dz/"/>
+      <outline text="Ø±Ø¦Ø§Ø³Ø© Ø§Ù„Ø¬Ù…Ù‡ÙˆØ±ÙŠØ©" title="Ø±Ø¦Ø§Ø³Ø© Ø§Ù„Ø¬Ù…Ù‡ÙˆØ±ÙŠØ©" type="rss" xmlUrl="https://www.el-mouradia.dz"/>
+      <outline text="Ø§Ù„ÙˆØ²ÙŠØ± Ø§Ù„Ø£ÙˆÙ„" title="Ø§Ù„ÙˆØ²ÙŠØ± Ø§Ù„Ø£ÙˆÙ„" type="rss" xmlUrl="https://www.premier-ministre.gov.dz"/>
+      <outline text="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø¯ÙØ§Ø¹ Ø§Ù„ÙˆØ·Ù†ÙŠ" title="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø¯ÙØ§Ø¹ Ø§Ù„ÙˆØ·Ù†ÙŠ" type="rss" xmlUrl="http://www.mdn.dz"/>
+      <outline text="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø´Ø¤ÙˆÙ† Ø§Ù„Ø®Ø§Ø±Ø¬ÙŠØ©" title="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø´Ø¤ÙˆÙ† Ø§Ù„Ø®Ø§Ø±Ø¬ÙŠØ©" type="rss" xmlUrl="https://www.mre.gov.dz"/>
+      <outline text="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø¯Ø§Ø®Ù„ÙŠØ©" title="ÙˆØ²Ø§Ø±Ø© Ø§Ù„Ø¯Ø§Ø®Ù„ÙŠØ©" type="rss" xmlUrl="https://www.interieur.gov.dz"/>
+      <outline text="Ø§Ù„Ø®Ø¨Ø±" title="Ø§Ù„Ø®Ø¨Ø±" type="rss" xmlUrl="https://www.elkhabar.com/"/>
+      <outline text="Ø§Ù„Ù†Ù‡Ø§Ø± Ø£ÙˆÙ†Ù„Ø§ÙŠÙ†" title="Ø§Ù„Ù†Ù‡Ø§Ø± Ø£ÙˆÙ†Ù„Ø§ÙŠÙ†" type="rss" xmlUrl="https://www.ennaharonline.com/"/>
+      <outline text="Ø§Ù„Ø¨Ù„Ø§Ø¯ Ù†Øª" title="Ø§Ù„Ø¨Ù„Ø§Ø¯ Ù†Øª" type="rss" xmlUrl="https://www.elbilad.net/rss"/>
+      <outline text="TSA Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±" title="TSA Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±" type="rss" xmlUrl="https://www.tsa-algerie.com/feed/"/>
+      <outline text="El Watan" title="El Watan" type="rss" xmlUrl="https://feeds.feedburner.com/elwatan/4pwdGeU2mTa"/>
+      <outline text="AlgÃ©rie 360" title="AlgÃ©rie 360" type="rss" xmlUrl="https://www.algerie360.com/feed/"/>
+      <outline text="Express DZ" title="Express DZ" type="rss" xmlUrl="https://www.expressdz.dz/feed/"/>
+      <outline text="Le Matin d&apos;AlgÃ©rie" title="Le Matin d&apos;AlgÃ©rie" type="rss" xmlUrl="https://lematindalgerie.com/feed/"/>
+      <outline text="Observ&apos;AlgÃ©rie" title="Observ&apos;AlgÃ©rie" type="rss" xmlUrl="https://observalgerie.com/feed/"/>
+      <outline text="Ø§Ù„Ø¬Ø²ÙŠØ±Ø© Ù†Øª" title="Ø§Ù„Ø¬Ø²ÙŠØ±Ø© Ù†Øª" type="rss" xmlUrl="https://www.aljazeera.net/xml/rss/all.xml"/>
+      <outline text="Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© Ù†Øª" title="Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© Ù†Øª" type="rss" xmlUrl="https://www.alarabiya.net/mrss"/>
+      <outline text="Ø³ÙƒØ§ÙŠ Ù†ÙŠÙˆØ² Ø¹Ø±Ø¨ÙŠØ©" title="Ø³ÙƒØ§ÙŠ Ù†ÙŠÙˆØ² Ø¹Ø±Ø¨ÙŠØ©" type="rss" xmlUrl="https://www.skynewsarabia.com/rss.xml"/>
+      <outline text="CNN Ø¨Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©" title="CNN Ø¨Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©" type="rss" xmlUrl="https://arabic.cnn.com/api/v1/rss/rss.xml"/>
+      <outline text="BBC Ø¹Ø±Ø¨ÙŠ" title="BBC Ø¹Ø±Ø¨ÙŠ" type="rss" xmlUrl="https://feeds.bbci.co.uk/arabic/rss.xml"/>
+      <outline text="Ø±ÙˆÙŠØªØ±Ø² Ø¹Ø±Ø¨ÙŠ" title="Ø±ÙˆÙŠØªØ±Ø² Ø¹Ø±Ø¨ÙŠ" type="rss" xmlUrl="https://www.reuters.com/ar/"/>
+      <outline text="ÙØ±Ø§Ù†Ø³ Ø¨Ø±Ø³ Ø¹Ø±Ø¨ÙŠ" title="ÙØ±Ø§Ù†Ø³ Ø¨Ø±Ø³ Ø¹Ø±Ø¨ÙŠ" type="rss" xmlUrl="https://www.afp.com/ar"/>
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ© (ÙˆØ§Ø³)" title="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ© (ÙˆØ§Ø³)" type="rss" xmlUrl="https://www.spa.gov.sa/rss.xml"/>
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¥Ù…Ø§Ø±Ø§Øª (ÙˆØ§Ù…)" title="ÙˆÙƒØ§Ù„Ø© Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ø¥Ù…Ø§Ø±Ø§Øª (ÙˆØ§Ù…)" type="rss" xmlUrl="https://www.wam.ae/ar/rss"/>
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ù‚Ø·Ø±ÙŠØ© (Ù‚Ù†Ø§)" title="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø¨Ø§Ø¡ Ø§Ù„Ù‚Ø·Ø±ÙŠØ© (Ù‚Ù†Ø§)" type="rss" xmlUrl="https://www.qna.org.qa/"/>
+      <outline text="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø§Ø¶ÙˆÙ„" title="ÙˆÙƒØ§Ù„Ø© Ø§Ù„Ø£Ù†Ø§Ø¶ÙˆÙ„" type="rss" xmlUrl="https://www.aa.com.tr/ar"/>
+      <outline text="CNN" title="CNN" type="rss" xmlUrl="http://rss.cnn.com/rss/cnn_topstories.rss"/>
+      <outline text="BBC News" title="BBC News" type="rss" xmlUrl="http://feeds.bbci.co.uk/news/rss.xml"/>
+      <outline text="Reuters" title="Reuters" type="rss" xmlUrl="https://www.reuters.com/rssfeed/worldnews"/>
+      <outline text="Associated Press (AP)" title="Associated Press (AP)" type="rss" xmlUrl="https://apnews.com/index.rss"/>
+      <outline text="France 24" title="France 24" type="rss" xmlUrl="https://www.france24.com/fr/rss"/>
+      <outline text="RFI" title="RFI" type="rss" xmlUrl="https://www.rfi.fr/fr/rss"/>
+      <outline text="Le Monde" title="Le Monde" type="rss" xmlUrl="https://www.lemonde.fr/rss/une.xml"/>
+      <outline text="Le Figaro" title="Le Figaro" type="rss" xmlUrl="https://www.lefigaro.fr/rss/figaro_actualites.xml"/>
+      <outline text="LibÃ©ration" title="LibÃ©ration" type="rss" xmlUrl="https://www.liberation.fr/arc/outboundfeeds/rss/"/>
+      <outline text="The New York Times" title="The New York Times" type="rss" xmlUrl="https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"/>
+      <outline text="The Guardian" title="The Guardian" type="rss" xmlUrl="https://www.theguardian.com/world/rss"/>
+      <outline text="Euronews" title="Euronews" type="rss" xmlUrl="https://www.euronews.com/rss"/>
+      <outline text="Bloomberg" title="Bloomberg" type="rss" xmlUrl="https://feeds.bloomberg.com/markets/news.rss"/>
+      <outline text="Financial Times" title="Financial Times" type="rss" xmlUrl="https://www.ft.com/?format=rss"/>
+      <outline text="The Economist" title="The Economist" type="rss" xmlUrl="https://www.economist.com/rss"/>
+      <outline text="Forbes" title="Forbes" type="rss" xmlUrl="https://www.forbes.com/"/>
+      <outline text="World Bank" title="World Bank" type="rss" xmlUrl="https://www.worldbank.org/en/news.rss"/>
+      <outline text="IMF" title="IMF" type="rss" xmlUrl="https://www.imf.org/en/News/RSS"/>
+      <outline text="Reuters Business" title="Reuters Business" type="rss" xmlUrl="https://www.reuters.com/rssfeed/businessNews"/>
+      <outline text="Ø§Ù„Ø§ØªØ­Ø§Ø¯ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠ Ù„ÙƒØ±Ø© Ø§Ù„Ù‚Ø¯Ù… (FAF)" title="Ø§Ù„Ø§ØªØ­Ø§Ø¯ Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±ÙŠ Ù„ÙƒØ±Ø© Ø§Ù„Ù‚Ø¯Ù… (FAF)" type="rss" xmlUrl="http://www.faf.dz/"/>
+      <outline text="Ø§Ù„Ø±Ø§Ø¨Ø·Ø© Ø§Ù„Ù…Ø­ØªØ±ÙØ© (LFP)" title="Ø§Ù„Ø±Ø§Ø¨Ø·Ø© Ø§Ù„Ù…Ø­ØªØ±ÙØ© (LFP)" type="rss" xmlUrl="http://www.lfp.dz/"/>
+      <outline text="FIFA" title="FIFA" type="rss" xmlUrl="https://www.fifa.com/"/>
+      <outline text="CAF" title="CAF" type="rss" xmlUrl="https://www.cafonline.com/"/>
+      <outline text="UEFA" title="UEFA" type="rss" xmlUrl="https://www.uefa.com/"/>
+      <outline text="ESPN" title="ESPN" type="rss" xmlUrl="https://www.espn.com/espn/rss/news"/>
+      <outline text="Olympic Games" title="Olympic Games" type="rss" xmlUrl="https://www.olympics.com/"/>
+      <outline text="TechCrunch" title="TechCrunch" type="rss" xmlUrl="https://techcrunch.com/feed/"/>
+      <outline text="Wired" title="Wired" type="rss" xmlUrl="https://www.wired.com/feed/rss"/>
+      <outline text="The Verge" title="The Verge" type="rss" xmlUrl="https://www.theverge.com/rss/index.xml"/>
+      <outline text="Ars Technica" title="Ars Technica" type="rss" xmlUrl="https://feeds.arstechnica.com/arstechnica/index"/>
+      <outline text="CNET" title="CNET" type="rss" xmlUrl="https://www.cnet.com/rss/news/"/>
+      <outline text="MIT Technology Review" title="MIT Technology Review" type="rss" xmlUrl="https://www.technologyreview.com/topnews.rss"/>
+      <outline text="BBC Technology" title="BBC Technology" type="rss" xmlUrl="http://feeds.bbci.co.uk/news/technology/rss.xml"/>
+      <outline text="World Health Organization" title="World Health Organization" type="rss" xmlUrl="https://www.who.int/rss-feeds"/>
+      <outline text="Nature" title="Nature" type="rss" xmlUrl="http://feeds.nature.com/nature/rss/current"/>
+      <outline text="Science Daily" title="Science Daily" type="rss" xmlUrl="https://www.sciencedaily.com/rss/all.xml"/>
+      <outline text="Science Magazine" title="Science Magazine" type="rss" xmlUrl="https://www.science.org/rss/news_current.xml"/>
+      <outline text="Google News - AlgÃ©rie" title="Google News - AlgÃ©rie" type="rss" xmlUrl="https://news.google.com/rss/search?q=AlgÃ©rie&amp;hl=fr&amp;gl=FR&amp;ceid=FR:fr"/>
+      <outline text="Google News - World" title="Google News - World" type="rss" xmlUrl="https://news.google.com/rss"/>
+      <outline text="BFM TV - AlgÃ©rie" title="BFM TV - AlgÃ©rie" type="rss" xmlUrl="https://www.bfmtv.com/rss/international/afrique/algerie/"/>
+      <outline text="Courrier International - AlgÃ©rie" title="Courrier International - AlgÃ©rie" type="rss" xmlUrl="https://www.courrierinternational.com/feed/rubrique/algerie/rss.xml"/>
+      <outline text="France Info - AlgÃ©rie" title="France Info - AlgÃ©rie" type="rss" xmlUrl="https://www.franceinfo.fr/monde/afrique/algerie.rss"/>
+      <outline text="Le Point - AlgÃ©rie" title="Le Point - AlgÃ©rie" type="rss" xmlUrl="https://www.lepoint.fr/arc/outboundfeeds/rss/tags_slug/algerie/"/>
+      <outline text="L&apos;HumanitÃ© - AlgÃ©rie" title="L&apos;HumanitÃ© - AlgÃ©rie" type="rss" xmlUrl="https://www.humanite.fr/mot-cle/algerie/feed"/>
+    </outline>
+    <outline text="Editorial Missing Sources" title="Editorial Missing Sources">
+      <outline text="Alerts" title="Alerts">
+        <outline text="EM-DAT" title="EM-DAT â€” Disaster Data" type="rss" xmlUrl="https://www.emdat.be/rss" htmlUrl="https://www.emdat.be/"/>
+        <outline text="GDACS" title="GDACS â€” Global Disasters" type="rss" xmlUrl="https://www.gdacs.org/xml/rss.xml" htmlUrl="https://www.gdacs.org/"/>
+        <outline text="NOAA Severe" title="NOAA â€” Weather Alerts" type="rss" xmlUrl="https://www.noaa.gov/rss/severe-weather" htmlUrl="https://www.noaa.gov/weather"/>
+        <outline text="ReliefWeb" title="ReliefWeb â€” Humanitarian" type="rss" xmlUrl="https://reliefweb.int/updates/rss" htmlUrl="https://reliefweb.int/"/>
+        <outline text="USGS Earthquakes" title="USGS â€” M2.5+ Worldwide" type="rss" xmlUrl="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.atom" htmlUrl="https://earthquake.usgs.gov/"/>
+      </outline>
+      <outline text="Algeria" title="Algeria">
+        <outline text="Algerie-DZ" title="Algerie-DZ â€” Portal" type="rss" xmlUrl="https://www.algerie-dz.com/feed/" htmlUrl="https://www.algerie-dz.com/"/>
+        <outline text="Bank of Algeria" title="Bank of Algeria â€” Monetary" type="rss" xmlUrl="https://www.bank-of-algeria.dz/feed/" htmlUrl="https://www.bank-of-algeria.dz/"/>
+        <outline text="Civil Protection DZ" title="Civil Protection â€” Emergency" type="rss" xmlUrl="https://www.protectioncivile.dz/feed/" htmlUrl="https://www.protectioncivile.dz/"/>
+        <outline text="Competition DZ" title="Competition â€” Sports" type="rss" xmlUrl="https://www.competition.dz/feed/" htmlUrl="https://www.competition.dz/"/>
+        <outline text="Dzair Daily" title="Dzair Daily â€” English" type="rss" xmlUrl="https://www.dzairdaily.com/feed/" htmlUrl="https://www.dzairdaily.com/"/>
+        <outline text="DZFoot" title="DZFoot â€” Algerian Football" type="rss" xmlUrl="https://www.dzfoot.com/feed/" htmlUrl="https://www.dzfoot.com/"/>
+        <outline text="Echorouk Online" title="Echorouk â€” Official" type="rss" xmlUrl="https://www.echoroukonline.com/feed/" htmlUrl="https://www.echoroukonline.com/"/>
+        <outline text="Le Soir d&apos;Algerie" title="Le Soir â€” Archives" type="rss" xmlUrl="https://www.lesoirdalgerie.com/feed/" htmlUrl="https://www.lesoirdalgerie.com/"/>
+        <outline text="Liberte Algerie" title="Liberte â€” Francophone" type="rss" xmlUrl="https://www.liberte-algerie.com/feed/" htmlUrl="https://www.liberte-algerie.com/"/>
+        <outline text="ONM Meteo" title="ONM â€” Weather Alerts" type="rss" xmlUrl="https://www.meteo.dz/feed/" htmlUrl="https://www.meteo.dz/"/>
+        <outline text="Radio Algerie" title="Radio Algerie â€” Live/News" type="rss" xmlUrl="https://www.radioalgerie.dz/feed/" htmlUrl="https://www.radioalgerie.dz/"/>
+        <outline text="Sonatrach Corp" title="Sonatrach â€” Corporate" type="rss" xmlUrl="https://www.sonatrach.dz/feed/" htmlUrl="https://www.sonatrach.dz/"/>
+        <outline text="Startup Algeria" title="Startup DZ â€” Innovation" type="rss" xmlUrl="https://www.startup.dz/feed/" htmlUrl="https://www.startup.dz/"/>
+        <outline text="Public Tenders DZ" title="Tenders DZ â€” Contracts" type="rss" xmlUrl="https://www.marchespublics.gov.dz/feed/" htmlUrl="https://www.marchespublics.gov.dz/"/>
+        <outline text="TV4 Algerie" title="TV4 Algerie â€” Regional" type="rss" xmlUrl="https://www.tv4algerie.com/feed/" htmlUrl="https://www.tv4algerie.com/"/>
+      </outline>
+      <outline text="Arab_World" title="Arab_World">
+        <outline text="Al-Ahram" title="Al-Ahram â€” Egypt" type="rss" xmlUrl="https://www.ahram.org.eg/rss/1.xml" htmlUrl="https://english.ahram.org.eg/"/>
+        <outline text="Arab News" title="Arab News â€” Saudi/Regional" type="rss" xmlUrl="https://www.arabnews.com/rss" htmlUrl="https://www.arabnews.com/"/>
+        <outline text="Asharq Al-Awsat" title="Asharq Al-Awsat" type="rss" xmlUrl="https://aawsat.com/rss" htmlUrl="https://aawsat.com/"/>
+        <outline text="Daily News Egypt" title="Daily News Egypt" type="rss" xmlUrl="https://www.dailynewsegypt.com/feed/" htmlUrl="https://www.dailynewsegypt.com/"/>
+        <outline text="Gulf News" title="Gulf News â€” UAE" type="rss" xmlUrl="https://gulfnews.com/rss" htmlUrl="https://gulfnews.com/"/>
+        <outline text="Hespress" title="Hespress â€” Morocco" type="rss" xmlUrl="https://www.hespress.com/rss" htmlUrl="https://www.hespress.com/"/>
+        <outline text="Jordan Times" title="Jordan Times" type="rss" xmlUrl="https://www.jordantimes.com/rss" htmlUrl="https://www.jordantimes.com/"/>
+        <outline text="Kapitalis" title="Kapitalis â€” Tunisia" type="rss" xmlUrl="https://www.kapitalis.com/feed/" htmlUrl="https://www.kapitalis.com/"/>
+        <outline text="LBCI" title="LBCI â€” Lebanon" type="rss" xmlUrl="https://www.lbcgroup.tv/feed/" htmlUrl="https://www.lbcgroup.tv/"/>
+        <outline text="Le360" title="Le360 â€” Morocco" type="rss" xmlUrl="https://fr.le360.ma/feed" htmlUrl="https://fr.le360.ma/"/>
+        <outline text="Masrawy" title="Masrawy â€” Egypt" type="rss" xmlUrl="https://www.masrawy.com/rss" htmlUrl="https://www.masrawy.com/"/>
+        <outline text="Mosaique FM" title="Mosaique FM â€” Tunisia" type="rss" xmlUrl="https://www.mosaiquefm.net/feed/" htmlUrl="https://www.mosaiquefm.net/"/>
+        <outline text="Roya News" title="Roya â€” Jordan" type="rss" xmlUrl="https://royanews.tv/feed/" htmlUrl="https://royanews.tv/"/>
+        <outline text="The National" title="The National â€” UAE" type="rss" xmlUrl="https://www.thenationalnews.com/rss" htmlUrl="https://www.thenationalnews.com/"/>
+        <outline text="Tunisia Numerique" title="Tunisia Numerique" type="rss" xmlUrl="https://www.tunisienumerique.com/feed/" htmlUrl="https://www.tunisienumerique.com/"/>
+      </outline>
+      <outline text="Competitors" title="Competitors">
+        <outline text="The Africa Report" title="Africa Report â€” Algeria" type="rss" xmlUrl="https://www.theafricareport.com/category/algeria/feed/" htmlUrl="https://www.theafricareport.com/category/algeria/"/>
+        <outline text="Al-Monitor" title="Al-Monitor â€” MENA" type="rss" xmlUrl="https://www.al-monitor.com/feed" htmlUrl="https://www.al-monitor.com/"/>
+        <outline text="Interlignes" title="Interlignes â€” Maghreb" type="rss" xmlUrl="https://www.interlignes.org/feed/" htmlUrl="https://www.interlignes.org/"/>
+        <outline text="Jeune Afrique" title="Jeune Afrique â€” Francophone" type="rss" xmlUrl="https://www.jeuneafrique.com/feed/" htmlUrl="https://www.jeuneafrique.com/"/>
+        <outline text="Maghreb Confidentiel" title="Maghreb Confidentiel â€” Intel" type="rss" xmlUrl="https://www.maghrebconfidentiel.com/feed/" htmlUrl="https://www.maghrebconfidentiel.com/"/>
+        <outline text="Maghreb Emergent" title="Maghreb Emergent" type="rss" xmlUrl="https://www.maghrebemergent.info/feed/" htmlUrl="https://www.maghrebemergent.info/"/>
+        <outline text="Middle East Eye" title="MEE â€” Regional" type="rss" xmlUrl="https://www.middleeasteye.net/feed" htmlUrl="https://www.middleeasteye.net/"/>
+        <outline text="North Africa Post" title="North Africa Post" type="rss" xmlUrl="https://northafricapost.com/feed/" htmlUrl="https://northafricapost.com/"/>
+        <outline text="Orient XXI" title="Orient XXI â€” Analysis" type="rss" xmlUrl="https://orientxxi.info/feed" htmlUrl="https://orientxxi.info/"/>
+      </outline>
+      <outline text="Economy" title="Economy">
+        <outline text="African Dev Bank" title="AfDB â€” Regional Finance" type="rss" xmlUrl="https://www.afdb.org/en/news-and-events/press-releases/rss.xml" htmlUrl="https://www.afdb.org/"/>
+        <outline text="Arabian Business" title="Arabian Business â€” Markets" type="rss" xmlUrl="https://www.arabianbusiness.com/rss" htmlUrl="https://www.arabianbusiness.com/"/>
+        <outline text="Argus Media" title="Argus â€” Commodities" type="rss" xmlUrl="https://www.argusmedia.com/en/news/rss" htmlUrl="https://www.argusmedia.com/"/>
+        <outline text="IEA News" title="IEA â€” Energy Reports" type="rss" xmlUrl="https://www.iea.org/news/rss" htmlUrl="https://www.iea.org/news"/>
+        <outline text="OPEC Press" title="OPEC â€” Official Releases" type="rss" xmlUrl="https://www.opec.org/opec_web/en/press_room/press_releases.xml" htmlUrl="https://www.opec.org/"/>
+        <outline text="S&amp;P Global Platts" title="Platts â€” Energy Markets" type="rss" xmlUrl="https://www.spglobal.com/platts/en/market-insights/rss" htmlUrl="https://www.spglobal.com/platts/"/>
+        <outline text="UNCTAD" title="UNCTAD â€” Development" type="rss" xmlUrl="https://unctad.org/rss" htmlUrl="https://unctad.org/"/>
+        <outline text="WTO" title="WTO â€” Trade Policy" type="rss" xmlUrl="https://www.wto.org/english/news_e/pres_e/rss.xml" htmlUrl="https://www.wto.org/"/>
+      </outline>
+      <outline text="Entertainment" title="Entertainment">
+        <outline text="Arab News Arts" title="Arab News â€” Arts &amp; Culture" type="rss" xmlUrl="https://www.arabnews.com/arts-culture/rss" htmlUrl="https://www.arabnews.com/arts-culture"/>
+        <outline text="Netflix Press" title="Netflix â€” Newsroom" type="rss" xmlUrl="https://about.netflix.com/en/news/rss" htmlUrl="https://about.netflix.com/en/news"/>
+        <outline text="Pitchfork" title="Pitchfork â€” Music/Culture" type="rss" xmlUrl="https://pitchfork.com/rss/news/" htmlUrl="https://pitchfork.com/"/>
+        <outline text="Hollywood Reporter" title="THR â€” Industry" type="rss" xmlUrl="https://www.hollywoodreporter.com/feed/" htmlUrl="https://www.hollywoodreporter.com/"/>
+        <outline text="Variety" title="Variety â€” Hollywood/Global" type="rss" xmlUrl="https://variety.com/feed/" htmlUrl="https://variety.com/"/>
+      </outline>
+      <outline text="Global" title="Global">
+        <outline text="Axios" title="Axios â€” World &amp; Politics" type="rss" xmlUrl="https://www.axios.com/api/feed" htmlUrl="https://www.axios.com/"/>
+        <outline text="DW News" title="Deutsche Welle â€” International" type="rss" xmlUrl="https://rss.dw.com/xml/rss-en-world" htmlUrl="https://www.dw.com/en/world"/>
+        <outline text="Jerusalem Post" title="JPost â€” Middle East" type="rss" xmlUrl="https://www.jpost.com/rss/rssfeed.ashx" htmlUrl="https://www.jpost.com/"/>
+        <outline text="MarketWatch" title="MarketWatch â€” Markets" type="rss" xmlUrl="https://www.marketwatch.com/rss/topstories" htmlUrl="https://www.marketwatch.com/"/>
+        <outline text="NPR" title="NPR â€” Global News" type="rss" xmlUrl="https://feeds.npr.org/rss/rss.php?id=1001" htmlUrl="https://www.npr.org/sections/news/"/>
+        <outline text="Politico" title="Politico â€” Global Policy" type="rss" xmlUrl="https://www.politico.com/rss/politicopicks.xml" htmlUrl="https://www.politico.com/"/>
+        <outline text="Sky News UK" title="Sky News â€” World" type="rss" xmlUrl="https://news.sky.com/tools/rss" htmlUrl="https://news.sky.com/world"/>
+        <outline text="Washington Post" title="WaPo â€” World" type="rss" xmlUrl="https://feeds.washingtonpost.com/rss/world" htmlUrl="https://www.washingtonpost.com/world/"/>
+      </outline>
+      <outline text="Sports" title="Sports">
+        <outline text="CAF Online" title="CAF â€” African Football" type="rss" xmlUrl="https://www.cafonline.com/news/rss" htmlUrl="https://www.cafonline.com/"/>
+        <outline text="ESPN FC" title="ESPN FC â€” Soccer" type="rss" xmlUrl="https://www.espn.com/espn/rss/soccer/news" htmlUrl="https://www.espn.com/soccer/"/>
+        <outline text="FIFA Plus" title="FIFA â€” Official" type="rss" xmlUrl="https://www.fifa.com/fifaplus/en/articles.rss" htmlUrl="https://www.fifa.com/"/>
+        <outline text="Goal.com" title="Goal â€” Global Football" type="rss" xmlUrl="https://www.goal.com/en/rss" htmlUrl="https://www.goal.com/"/>
+        <outline text="L&apos;Equipe" title="L&apos;Equipe â€” Football" type="rss" xmlUrl="https://www.lequipe.fr/rss/actu_rss_Football.xml" htmlUrl="https://www.lequipe.fr/"/>
+        <outline text="Marca" title="Marca â€” La Liga" type="rss" xmlUrl="https://e00-marca.uecdn.es/rss/portada.xml" htmlUrl="https://www.marca.com/"/>
+        <outline text="Sky Sports" title="Sky Sports â€” News" type="rss" xmlUrl="https://www.skysports.com/rss/12040" htmlUrl="https://www.skysports.com/"/>
+      </outline>
+      <outline text="Tech" title="Tech">
+        <outline text="Dark Reading" title="Dark Reading â€” Enterprise Sec" type="rss" xmlUrl="https://www.darkreading.com/rss.xml" htmlUrl="https://www.darkreading.com/"/>
+        <outline text="Google AI" title="Google AI â€” Blog" type="rss" xmlUrl="https://blog.google/technology/ai/rss/" htmlUrl="https://blog.google/technology/ai/"/>
+        <outline text="KrebsOnSecurity" title="Krebs â€” Security" type="rss" xmlUrl="https://krebsonsecurity.com/feed/" htmlUrl="https://krebsonsecurity.com/"/>
+        <outline text="Meta AI" title="Meta AI â€” Research" type="rss" xmlUrl="https://ai.meta.com/blog/rss/" htmlUrl="https://ai.meta.com/blog/"/>
+        <outline text="OpenAI Blog" title="OpenAI â€” Official Updates" type="rss" xmlUrl="https://openai.com/blog/rss.xml" htmlUrl="https://openai.com/blog"/>
+        <outline text="The Hacker News" title="THN â€” Cybersecurity" type="rss" xmlUrl="https://feeds.feedburner.com/TheHackersNews" htmlUrl="https://thehackernews.com/"/>
+        <outline text="VentureBeat AI" title="VentureBeat â€” AI" type="rss" xmlUrl="https://venturebeat.com/category/ai/feed/" htmlUrl="https://venturebeat.com/category/ai/"/>
+      </outline>
+      <outline text="Trends" title="Trends">
+        <outline text="YouTube: BBC News" title="BBC News YouTube" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id=UC16niRr50-MSBwiO3YDb3RA" htmlUrl="https://www.youtube.com/@BBCNews"/>
+        <outline text="GN: Algeria Energy" title="GN â€” Algeria Sonatrach/Gas" type="rss" xmlUrl="https://news.google.com/rss/search?q=Algerie+Sonatrach+gas+export&amp;hl=fr&amp;gl=DZ&amp;ceid=DZ:fr" htmlUrl="https://news.google.com/search?q=Algerie+Sonatrach"/>
+        <outline text="GN: Maghreb Politics" title="GN â€” Maghreb Geopolitics" type="rss" xmlUrl="https://news.google.com/rss/search?q=Maghreb+diplomatie+conflit&amp;hl=fr&amp;gl=MA&amp;ceid=MA:fr" htmlUrl="https://news.google.com/search?q=Maghreb"/>
+        <outline text="GN: OPEC Oil" title="GN â€” OPEC &amp; Prices" type="rss" xmlUrl="https://news.google.com/rss/search?q=OPEC+oil+prices+production+cut&amp;hl=en&amp;gl=US&amp;ceid=US:en" htmlUrl="https://news.google.com/search?q=OPEC"/>
+        <outline text="Reddit Algeria" title="r/Algeria" type="rss" xmlUrl="https://www.reddit.com/r/Algeria/.rss" htmlUrl="https://www.reddit.com/r/Algeria/"/>
+        <outline text="Reddit MENA" title="r/MiddleEast" type="rss" xmlUrl="https://www.reddit.com/r/MiddleEast/.rss" htmlUrl="https://www.reddit.com/r/MiddleEast/"/>
+        <outline text="Reddit WorldNews" title="r/worldnews" type="rss" xmlUrl="https://www.reddit.com/r/worldnews/.rss" htmlUrl="https://www.reddit.com/r/worldnews/"/>
+        <outline text="Telegram Algeria (Bridge)" title="TG â€” Algeria Public Channels" type="rss" xmlUrl="https://rss-bridge.local/?action=display&amp;bridge=Telegram&amp;channel=algerianews&amp;format=Atom" htmlUrl="https://t.me/s/algerianews"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

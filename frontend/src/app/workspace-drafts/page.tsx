@@ -31,6 +31,7 @@ import {
     editorialApi,
     jobsApi,
     memoryApi,
+    milApi,
     msiApi,
     simApi,
     storiesApi,
@@ -38,6 +39,7 @@ import {
     type ClaimOverrideInput,
     type ArchiveSearchItem,
     type FactCheckClaim,
+    type MILEditorContext,
     type Source,
     type StoryControlCenterResponse,
     type StorySuggestion,
@@ -50,9 +52,13 @@ import { useAuth } from '@/lib/auth';
 import { cn, formatRelativeTime, truncate } from '@/lib/utils';
 import { MemoryQuickCaptureModal } from '@/components/memory/MemoryQuickCaptureModal';
 import { WorkspaceEmpty as Empty, WorkspaceInfoBlock as InfoBlock, WorkspacePanel as Panel } from '@/components/workspace-drafts/WorkspacePrimitives';
-import { trackNextAction, trackUiAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
+import { useUxShellMode } from '@/components/layout/UxShellModeContext';
+import { NextActionBar } from '@/components/workflow/NextActionBar';
+import { ReadinessStrip, type ReadinessStripItem } from '@/components/workflow/ReadinessStrip';
+import { trackMetricEvent, trackModeChange, trackNextAction, trackUiAction, useTrackFirstAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
 import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay';
 import { useTutorialState } from '@/lib/tutorial';
+import { ActionCard, StatusBadge } from '@/components/ux/SurfacePrimitives';
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error';
 type RightTab = 'evidence' | 'proofread' | 'quality' | 'seo' | 'social' | 'context' | 'msi' | 'simulator' | 'xray';
@@ -787,6 +793,7 @@ function WorkspaceDraftsPageContent() {
     const [manualCategory, setManualCategory] = useState('local_algeria');
     const [manualUrgency, setManualUrgency] = useState('medium');
     const [leftTab, setLeftTab] = useState<LeftTab>('drafts');
+    const { setMode } = useUxShellMode();
     const surfaceDetails = useMemo(
         () => ({
             role: user?.role || 'guest',
@@ -798,19 +805,24 @@ function WorkspaceDraftsPageContent() {
     );
 
     useTrackSurfaceView('workspace_drafts', surfaceDetails);
+    const trackFirstAction = useTrackFirstAction('workspace_drafts', surfaceDetails);
     const [archiveQuery, setArchiveQuery] = useState('');
     const [archiveItems, setArchiveItems] = useState<ArchiveSearchItem[]>([]);
     const [archiveError, setArchiveError] = useState<string | null>(null);
 
-    const [toolsExpanded, setToolsExpanded] = useState(true);
+    const [toolsExpanded, setToolsExpanded] = useState(false);
     const [blockersOpen, setBlockersOpen] = useState(false);
     const [decisionDetailOpen, setDecisionDetailOpen] = useState(false);
     const [copilotExpanded, setCopilotExpanded] = useState(false);
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [focusMode, setFocusMode] = useState(false);
+    const [deepWorkMode, setDeepWorkMode] = useState(false);
+    const [deepWorkMinutes, setDeepWorkMinutes] = useState(0);
+    const [emergencyMode, setEmergencyMode] = useState(false);
     const [headerToolsOpen, setHeaderToolsOpen] = useState(false);
     const [editorStage, setEditorStage] = useState<EditorStage>(isWriterRole ? 'writing' : 'review');
     const [smartHighlightEnabled, setSmartHighlightEnabled] = useState(true);
+    const [satisfactionSentiment, setSatisfactionSentiment] = useState<'easy' | 'okay' | 'hard' | null>(null);
     const [inlineAiOpen, setInlineAiOpen] = useState(false);
     const [inlineSourceOpen, setInlineSourceOpen] = useState(false);
     const [inlineAiError, setInlineAiError] = useState<string | null>(null);
@@ -828,6 +840,10 @@ function WorkspaceDraftsPageContent() {
     const [memoryCaptureOpen, setMemoryCaptureOpen] = useState(false);
     const lastSimplifiedWorkRef = useRef<string | null>(null);
     const lastSavedRef = useRef<{ title: string; body: string }>({ title: '', body: '' });
+    const deepWorkStartedAtRef = useRef<number | null>(null);
+    const emergencyStartedAtRef = useRef<number | null>(null);
+    const interactionCountRef = useRef(0);
+    const draftReadyTrackedRef = useRef(false);
     const isWriteMode = true;
     const isImproveMode = false;
     const isAdvancedMode = false;
@@ -915,6 +931,12 @@ function WorkspaceDraftsPageContent() {
         queryFn: () => editorialApi.smartContext(workId!),
         enabled: !!workId,
     });
+    const { data: milEditorContextData } = useQuery({
+        queryKey: ['mil-editor-context', workId],
+        queryFn: async () => (await milApi.editorContext({ work_id: workId! })).data,
+        enabled: !!workId,
+        staleTime: 1000 * 30,
+    });
     const { data: versionsData } = useQuery({
         queryKey: ['smart-editor-versions', workId],
         queryFn: () => editorialApi.draftVersions(workId!),
@@ -937,6 +959,7 @@ function WorkspaceDraftsPageContent() {
     });
 
     const context = contextData?.data;
+    const milEditorContext = (milEditorContextData || null) as MILEditorContext | null;
     const versions = versionsData?.data || [];
     const constitutionTips = constitutionTipsData?.data?.tips || [];
     const articleContextId = context?.article?.id || null;
@@ -1802,6 +1825,20 @@ function WorkspaceDraftsPageContent() {
         return { readinessLabel, blockingClaims, qualityScore };
     }, [readiness, claims, quality]);
 
+    const registerInteraction = (actionLabel: string, extra?: Record<string, unknown>) => {
+        interactionCountRef.current += 1;
+        trackFirstAction(actionLabel, extra);
+    };
+
+    useEffect(() => {
+        if (!readiness?.ready_for_publish || draftReadyTrackedRef.current) return;
+        draftReadyTrackedRef.current = true;
+        trackMetricEvent('workspace_drafts', 'clicks_to_draft_ready', {
+            ...surfaceDetails,
+            clicks: interactionCountRef.current,
+        });
+    }, [readiness?.ready_for_publish, surfaceDetails]);
+
     const bodyText = useMemo(() => htmlToReadableText(bodyHtml || ''), [bodyHtml]);
     const hasSubmissionBody = bodyText.trim().length >= 120;
 
@@ -2208,13 +2245,189 @@ function WorkspaceDraftsPageContent() {
         setHeaderToolsOpen(false);
         setCopilotOpen(false);
         setFocusMode(false);
+        setDeepWorkMode(false);
+        setDeepWorkMinutes(0);
+        setEmergencyMode(false);
+        setSatisfactionSentiment(null);
     }, [articleId, isWriterRole, workId]);
 
-    const showSidePanels = !focusMode;
+    useEffect(() => {
+        const mode = emergencyMode ? 'emergency' : deepWorkMode ? 'deep_work' : focusMode ? 'focus' : 'normal';
+        setMode(mode);
+        return () => setMode('normal');
+    }, [deepWorkMode, emergencyMode, focusMode, setMode]);
+
+    useEffect(() => {
+        if (focusMode) {
+            trackModeChange('workspace_drafts', 'focus', surfaceDetails);
+            trackMetricEvent('workspace_drafts', 'focus_mode_adoption', surfaceDetails);
+        }
+    }, [focusMode, surfaceDetails]);
+
+    useEffect(() => {
+        if (deepWorkMode) {
+            deepWorkStartedAtRef.current = Date.now();
+            setDeepWorkMinutes(0);
+            trackModeChange('workspace_drafts', 'deep_work', surfaceDetails);
+            const timer = window.setInterval(() => {
+                if (!deepWorkStartedAtRef.current) return;
+                setDeepWorkMinutes(Math.max(1, Math.floor((Date.now() - deepWorkStartedAtRef.current) / 60_000)));
+            }, 30_000);
+            return () => window.clearInterval(timer);
+        } else if (deepWorkStartedAtRef.current) {
+            trackMetricEvent('workspace_drafts', 'deep_work_session', {
+                ...surfaceDetails,
+                elapsed_ms: Date.now() - deepWorkStartedAtRef.current,
+            });
+            deepWorkStartedAtRef.current = null;
+            setDeepWorkMinutes(0);
+        }
+    }, [deepWorkMode, surfaceDetails]);
+
+    useEffect(() => {
+        if (emergencyMode) {
+            emergencyStartedAtRef.current = Date.now();
+            trackModeChange('workspace_drafts', 'emergency', surfaceDetails);
+        } else if (emergencyStartedAtRef.current) {
+            trackMetricEvent('workspace_drafts', 'emergency_workflow_time', {
+                ...surfaceDetails,
+                elapsed_ms: Date.now() - emergencyStartedAtRef.current,
+            });
+            emergencyStartedAtRef.current = null;
+        }
+    }, [emergencyMode, surfaceDetails]);
+
+    useEffect(() => {
+        const handler = () => {
+            const bodyLength = htmlToReadableText(bodyHtml || '').trim().length;
+            if (bodyLength >= 80 && saveState !== 'saved') {
+                trackMetricEvent('workspace_drafts', 'workspace_abandonment', {
+                    ...surfaceDetails,
+                    body_length: bodyLength,
+                    save_state: saveState,
+                });
+            }
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [bodyHtml, saveState, surfaceDetails]);
+
+    const showSidePanels = !focusMode && !deepWorkMode && !emergencyMode;
     const mainSpanClass = showSidePanels ? 'xl:col-span-7' : 'xl:col-span-12';
     const isWritingStage = isWriterRole && editorStage === 'writing';
     const showTechnicalDiagnostics = !isWriterRole || decisionDetailOpen;
-    const showInlineResults = toolsExpanded;
+    const showInlineResults = toolsExpanded && !emergencyMode;
+    const editorJourney = useMemo(
+        () => [
+            {
+                id: 'writing',
+                label: 'الكتابة',
+                hint: 'العنوان والنص الأساسي',
+                active: isWritingStage,
+                onClick: () => returnToWritingStage(),
+            },
+            {
+                id: 'verify',
+                label: 'التحقق',
+                hint: 'الأدلة والادعاءات',
+                active: !isWritingStage && activeTab === 'evidence',
+                onClick: () => {
+                    enterReviewStage();
+                    setActiveTab('evidence');
+                },
+            },
+            {
+                id: 'quality',
+                label: 'الجودة',
+                hint: 'اللغة والتقييم',
+                active: !isWritingStage && (activeTab === 'proofread' || activeTab === 'quality'),
+                onClick: () => {
+                    enterReviewStage();
+                    setActiveTab('quality');
+                },
+            },
+            {
+                id: 'publish',
+                label: 'النشر/الجاهزية',
+                hint: 'بوابة النشر وSEO',
+                active: !isWritingStage && (activeTab === 'seo' || activeTab === 'social'),
+                onClick: () => {
+                    enterReviewStage();
+                    setActiveTab('seo');
+                },
+            },
+            {
+                id: 'context',
+                label: 'السياق',
+                hint: 'الخلفية والذاكرة',
+                active: !isWritingStage && activeTab === 'context',
+                onClick: () => {
+                    enterReviewStage();
+                    setActiveTab('context');
+                },
+            },
+        ],
+        [activeTab, isWritingStage],
+    );
+    const stageAiGuide = useMemo(() => {
+        if (emergencyMode) {
+            return {
+                title: 'اقتراح ذكي لوضع الطوارئ',
+                description: 'ثبّت الوقائع أولًا، ثم شغّل التحقق، ثم افحص الجاهزية قبل الإرسال.',
+                actionLabel: 'فحص سريع',
+                run: () => runQuickCheck.mutate(),
+            };
+        }
+        if (isWritingStage) {
+            return {
+                title: 'اقتراح ذكي لمرحلة الكتابة',
+                description: 'ابقِ التركيز على النص الأساسي. استخدم التحسين فقط بعد إنهاء الفقرة أو الفكرة الرئيسية.',
+                actionLabel: 'تحسين النص',
+                run: () => rewrite.mutate(),
+            };
+        }
+        if (activeTab === 'evidence') {
+            return {
+                title: 'اقتراح ذكي لمرحلة التحقق',
+                description: 'لا تنتقل إلى SEO أو السوشيال قبل حسم الادعاءات والروابط الحرجة.',
+                actionLabel: 'تحقق الادعاءات',
+                run: () => runVerifier.mutate(),
+            };
+        }
+        if (activeTab === 'proofread' || activeTab === 'quality') {
+            return {
+                title: 'اقتراح ذكي للجودة',
+                description: 'المرحلة الحالية تحتاج ضبط الجودة أو اللغة لا فتح كل الأدوات الثانوية دفعة واحدة.',
+                actionLabel: activeTab === 'quality' ? 'تقييم الجودة' : 'تدقيق لغوي',
+                run: () => (activeTab === 'quality' ? runQuality.mutate() : runProofread.mutate()),
+            };
+        }
+        return {
+            title: 'اقتراح ذكي للجاهزية',
+            description: 'افحص بوابة النشر قبل توليد السوشيال أو تشغيل المحاكاة.',
+            actionLabel: 'بوابة النشر',
+            run: () => runReadiness.mutate(),
+        };
+    }, [activeTab, emergencyMode, isWritingStage, rewrite, runProofread, runQuality, runQuickCheck, runReadiness, runVerifier]);
+    const readinessStripItems = useMemo<ReadinessStripItem[]>(() => {
+        const reports = readiness?.reports || {};
+        return Object.entries(STAGE_LABELS).map(([stage, label]) => ({
+            id: stage,
+            label,
+            passed: Boolean(reports[stage]?.passed),
+            hint: reports[stage]?.passed ? 'مكتمل' : 'يحتاج مراجعة قبل النشر أو الاعتماد.',
+            actionLabel: reports[stage]?.passed ? undefined : 'فتح المرحلة',
+            onAction:
+                reports[stage]?.passed || !STAGE_ACTIONS[stage]
+                    ? undefined
+                    : () => {
+                          const action = STAGE_ACTIONS[stage];
+                          if (action) {
+                              decisionActionHandlers[action]();
+                          }
+                      },
+        }));
+    }, [decisionActionHandlers, readiness]);
     const tutorialStep = tutorialState.step;
     const isQuickTour = tutorialState.pace === 'quick';
     const totalTourSteps = isQuickTour ? 4 : 5;
@@ -2818,6 +3031,81 @@ function WorkspaceDraftsPageContent() {
                         <p key={`${tip}-${idx}`}>- {cleanText(tip)}</p>
                     ))}
                 </div>
+                {milEditorContext && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-50 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-300/80">MIL Context</p>
+                                <p className="mt-1 text-emerald-100">الرادار الحي أثناء التحرير</p>
+                            </div>
+                            <Sparkles className="w-4 h-4 text-emerald-300" />
+                        </div>
+                        {!!milEditorContext.related_entities.length && (
+                            <div className="space-y-1">
+                                <p className="text-[11px] text-emerald-200/80">الكيانات المرتبطة</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {milEditorContext.related_entities.slice(0, 8).map((entity) => (
+                                        <span key={entity} className="rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] text-emerald-50">
+                                            {cleanText(entity)}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {!!milEditorContext.live_signals.length && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] text-emerald-200/80">إشارات حية مرتبطة بالمسودة</p>
+                                {milEditorContext.live_signals.slice(0, 3).map((signal) => (
+                                    <div
+                                        key={signal.id}
+                                        className="block rounded-lg border border-white/10 bg-black/20 px-2.5 py-2"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-[11px] text-white">{cleanText(signal.payload?.title || signal.signal_code)}</p>
+                                            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
+                                                {Math.round(Number(signal.confidence_score || 0) * 100)}%
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] text-gray-300 leading-5">{cleanText(signal.explanation?.human_summary || signal.signal_type)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {!!milEditorContext.missing_angles.length && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] text-emerald-200/80">زوايا ناقصة تستحق الإضافة</p>
+                                {milEditorContext.missing_angles.slice(0, 2).map((item) => (
+                                    <div key={`${item.title}-${item.summary}`} className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-2 text-amber-50">
+                                        <p className="text-[11px]">{cleanText(item.title)}</p>
+                                        <p className="mt-1 text-[10px] text-amber-100/90 leading-5">{cleanText(item.summary)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {!!milEditorContext.archive_links.length && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] text-emerald-200/80">روابط أرشيفية مقترحة</p>
+                                {milEditorContext.archive_links.slice(0, 2).map((item) => (
+                                    <a key={`${item.title}-${item.summary}`} href={item.href || undefined} className="block rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                                        <p className="text-[11px] text-white">{cleanText(item.title)}</p>
+                                        <p className="mt-1 text-[10px] text-gray-300 leading-5">{cleanText(item.summary)}</p>
+                                    </a>
+                                ))}
+                            </div>
+                        )}
+                        {!!milEditorContext.competitor_angles.length && (
+                            <div className="space-y-2">
+                                <p className="text-[11px] text-emerald-200/80">زاوية المنافسين الآن</p>
+                                {milEditorContext.competitor_angles.slice(0, 2).map((item) => (
+                                    <div key={`${item.title}-${item.summary}`} className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-2 text-red-50">
+                                        <p className="text-[11px]">{cleanText(item.title)}</p>
+                                        <p className="mt-1 text-[10px] text-red-100/90 leading-5">{cleanText(item.summary)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </Panel>
         )}
         </div>
@@ -3319,6 +3607,7 @@ function WorkspaceDraftsPageContent() {
                         <button
                             disabled={autosave.isPending}
                             onClick={() => {
+                                registerInteraction('حفظ', { area: 'workspace_header' });
                                 trackUiAction('workspace_drafts', 'حفظ', surfaceDetails);
                                 runWithGuide('save', () => {
                                     setSaveState('saving');
@@ -3331,14 +3620,62 @@ function WorkspaceDraftsPageContent() {
                         </button>
                         <button
                             type="button"
-                            onClick={enterReviewStage}
+                            onClick={() => {
+                                registerInteraction('أنهيت الكتابة', { area: 'workspace_header' });
+                                enterReviewStage();
+                            }}
                             className="min-h-10 rounded-xl border border-cyan-500/30 bg-cyan-500/15 px-4 py-2 text-xs font-medium text-cyan-100"
                         >
                             أنهيت الكتابة
                         </button>
                         <button
                             type="button"
-                            onClick={() => setHeaderToolsOpen((prev) => !prev)}
+                            onClick={() => {
+                                setFocusMode((prev) => !prev);
+                                if (deepWorkMode) setDeepWorkMode(false);
+                                if (emergencyMode) setEmergencyMode(false);
+                            }}
+                            className={cn(
+                                'min-h-10 rounded-xl border px-3 py-2 text-xs',
+                                focusMode ? 'border-cyan-500/30 bg-cyan-500/15 text-cyan-100' : 'border-white/15 bg-white/5 text-slate-200',
+                            )}
+                        >
+                            {focusMode ? 'إلغاء التركيز' : 'وضع التركيز'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDeepWorkMode((prev) => !prev);
+                                setFocusMode(false);
+                                setEmergencyMode(false);
+                            }}
+                            className={cn(
+                                'min-h-10 rounded-xl border px-3 py-2 text-xs',
+                                deepWorkMode ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-100' : 'border-white/15 bg-white/5 text-slate-200',
+                            )}
+                        >
+                            {deepWorkMode ? `العمل العميق ${deepWorkMinutes > 0 ? `(${deepWorkMinutes}د)` : ''}` : 'العمل العميق'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setEmergencyMode((prev) => !prev);
+                                setFocusMode(false);
+                                setDeepWorkMode(false);
+                            }}
+                            className={cn(
+                                'min-h-10 rounded-xl border px-3 py-2 text-xs',
+                                emergencyMode ? 'border-red-500/30 bg-red-500/15 text-red-100' : 'border-white/15 bg-white/5 text-slate-200',
+                            )}
+                        >
+                            {emergencyMode ? 'إغلاق وضع الطوارئ' : 'وضع الطوارئ'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                registerInteraction(headerToolsOpen ? 'إغلاق الأدوات الإضافية' : 'فتح الأدوات الإضافية', { area: 'workspace_header' });
+                                setHeaderToolsOpen((prev) => !prev);
+                            }}
                             className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200"
                         >
                             {headerToolsOpen ? 'إغلاق' : 'المزيد'}
@@ -3349,13 +3686,19 @@ function WorkspaceDraftsPageContent() {
                 {headerToolsOpen && (
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
                         <button
-                            onClick={() => setMemoryCaptureOpen(true)}
+                            onClick={() => {
+                                registerInteraction('حفظ في الذاكرة', { area: 'workspace_header_tools' });
+                                setMemoryCaptureOpen(true);
+                            }}
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
                         >
                             حفظ في الذاكرة
                         </button>
                         <button
-                            onClick={() => runWithGuide('manual_draft', () => setNewDraftOpen(true))}
+                            onClick={() => {
+                                registerInteraction('مسودة جديدة', { area: 'workspace_header_tools' });
+                                runWithGuide('manual_draft', () => setNewDraftOpen(true));
+                            }}
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200"
                         >
                             مسودة جديدة
@@ -3371,6 +3714,142 @@ function WorkspaceDraftsPageContent() {
 
                 {(err || ok) && <div className={cn('mt-3 rounded-xl px-3 py-2 text-xs', err ? 'bg-red-500/15 text-red-200 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30')}>{err || ok}</div>}
             </div>
+
+            <NextActionBar
+                title={nextAction.label}
+                description={nextAction.description}
+                actionLabel={nextAction.label}
+                onAction={() => {
+                    registerInteraction(nextAction.label, { area: 'next_action_bar' });
+                    trackNextAction('workspace_drafts', nextAction.label, surfaceDetails);
+                    nextAction.handler();
+                }}
+                tone={
+                    nextAction.severity === 'critical' || nextAction.severity === 'high'
+                        ? 'danger'
+                        : nextAction.severity === 'medium'
+                          ? 'warn'
+                          : 'success'
+                }
+                meta={[
+                    `الجاهزية: ${compactStatus.readinessLabel}`,
+                    `ادعاءات حرجة: ${compactStatus.blockingClaims}`,
+                    `الجودة: ${compactStatus.qualityScore}`,
+                ]}
+            />
+
+            <div className="rounded-2xl border border-white/10 bg-gray-900/45 p-4" dir="rtl">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 className="text-sm font-semibold text-white">رحلة التحرير</h2>
+                        <p className="mt-1 text-xs text-slate-400">ابدأ بالكتابة، ثم انتقل إلى التحقق والجودة والجاهزية دون الغرق في كل الأدوات دفعة واحدة.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                        <span>وضع الصفحة:</span>
+                        <StatusBadge tone={emergencyMode ? 'danger' : deepWorkMode ? 'success' : focusMode ? 'info' : 'default'}>
+                            {emergencyMode ? 'طوارئ' : deepWorkMode ? 'عمل عميق' : focusMode ? 'تركيز' : 'عادي'}
+                        </StatusBadge>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+                    {editorJourney.map((stage) => (
+                        <button
+                            key={stage.id}
+                            type="button"
+                            onClick={stage.onClick}
+                            className={cn(
+                                'rounded-xl border px-3 py-3 text-right transition-colors',
+                                stage.active
+                                    ? 'border-cyan-500/30 bg-cyan-500/10'
+                                    : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]',
+                            )}
+                        >
+                            <div className="text-sm font-medium text-white">{stage.label}</div>
+                            <div className="mt-1 text-[11px] leading-5 text-slate-400">{stage.hint}</div>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <ActionCard
+                title={stageAiGuide.title}
+                description={stageAiGuide.description}
+                actionLabel={stageAiGuide.actionLabel}
+                actionTone={emergencyMode ? 'danger' : isWritingStage ? 'info' : 'success'}
+                onAction={() => {
+                    registerInteraction(stageAiGuide.actionLabel, { area: 'stage_ai_guide', mode: emergencyMode ? 'emergency' : deepWorkMode ? 'deep_work' : focusMode ? 'focus' : 'normal' });
+                    stageAiGuide.run();
+                }}
+                meta={
+                    <>
+                        <StatusBadge tone={isWritingStage ? 'info' : 'warn'}>{isWritingStage ? 'مرحلة الكتابة' : 'مرحلة المراجعة'}</StatusBadge>
+                        {emergencyMode && <StatusBadge tone="danger">مسار طوارئ مبسّط</StatusBadge>}
+                        {deepWorkMode && <StatusBadge tone="success">إشعارات أقل وألواح جانبية مخفية</StatusBadge>}
+                    </>
+                }
+            />
+
+            {emergencyMode && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4" dir="rtl">
+                    <h3 className="text-sm font-semibold text-red-100">وضع الطوارئ</h3>
+                    <p className="mt-2 text-xs leading-6 text-red-100/90">تم تبسيط الواجهة إلى ثلاث خطوات فقط من دون تجاوز الجاهزية أو منطق الاعتماد.</p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                        <div className="rounded-xl border border-red-500/20 bg-black/20 p-3 text-xs text-red-50">
+                            <p className="font-semibold">1. ثبّت الوقائع</p>
+                            <p className="mt-1 text-red-100/80">راجع العنوان والافتتاحية ثم تحقّق من الادعاءات الحرجة.</p>
+                        </div>
+                        <div className="rounded-xl border border-red-500/20 bg-black/20 p-3 text-xs text-red-50">
+                            <p className="font-semibold">2. عالج العائق الأعلى</p>
+                            <p className="mt-1 text-red-100/80">نفّذ الإجراء التالي المقترح فقط بدل فتح كل الأدوات.</p>
+                        </div>
+                        <div className="rounded-xl border border-red-500/20 bg-black/20 p-3 text-xs text-red-50">
+                            <p className="font-semibold">3. افحص الجاهزية ثم أرسل</p>
+                            <p className="mt-1 text-red-100/80">لا يوجد تجاوز للبوابة التحريرية أو الاعتماد النهائي.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <ReadinessStrip
+                title="شريط الجاهزية"
+                subtitle="خمس نقاط سريعة تختصر حالة النص قبل الاعتماد أو النشر اليدوي."
+                items={readinessStripItems}
+            />
+
+            {(isJournalist || isWriterRole) && !satisfactionSentiment && (
+                <div className="rounded-2xl border border-white/10 bg-gray-900/45 p-4" dir="rtl">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-sm font-semibold text-white">كيف تبدو الجلسة الآن؟</h3>
+                            <p className="mt-1 text-xs text-slate-400">نبضة خفيفة تساعدنا على قياس الحمل الذهني داخل المحرر من دون تعطيل الكتابة.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {[
+                                { id: 'easy' as const, label: 'سلسة', score: 5 },
+                                { id: 'okay' as const, label: 'مقبولة', score: 3 },
+                                { id: 'hard' as const, label: 'مرهقة', score: 1 },
+                            ].map((option) => (
+                                <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => {
+                                        registerInteraction(`رضا الجلسة: ${option.label}`, { area: 'workspace_satisfaction' });
+                                        setSatisfactionSentiment(option.id);
+                                        trackMetricEvent('workspace_drafts', 'journalist_satisfaction', {
+                                            ...surfaceDetails,
+                                            sentiment: option.id,
+                                            score: option.score,
+                                        });
+                                    }}
+                                    className="min-h-10 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:bg-white/10"
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="rounded-2xl border border-white/10 bg-gray-900/50 p-4" dir="rtl">
                 {blockerSummary.count > 0 ? (
@@ -3391,21 +3870,23 @@ function WorkspaceDraftsPageContent() {
                 <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                onClick={() => {
-                                    trackNextAction('workspace_drafts', nextAction.label, surfaceDetails);
-                                    nextAction.handler();
-                                }}
+                                <button
+                                    onClick={() => {
+                                        registerInteraction(nextAction.label, { area: 'workspace_primary_actions' });
+                                        trackNextAction('workspace_drafts', nextAction.label, surfaceDetails);
+                                        nextAction.handler();
+                                    }}
                                 className={cn('min-h-10 px-4 py-2 rounded-xl border text-xs flex items-center gap-2 font-medium', severityStyles(nextAction.severity).badge, 'border-white/15')}
                             >
                                 {nextAction.label}
                             </button>
-                            <button
-                                disabled={autosave.isPending}
-                                onClick={() => {
-                                trackUiAction('workspace_drafts', 'حفظ', surfaceDetails);
-                                    runWithGuide('save', () => { setSaveState('saving'); autosave.mutate(); });
-                                }}
+                                <button
+                                    disabled={autosave.isPending}
+                                    onClick={() => {
+                                        registerInteraction('حفظ', { area: 'workspace_primary_actions' });
+                                        trackUiAction('workspace_drafts', 'حفظ', surfaceDetails);
+                                        runWithGuide('save', () => { setSaveState('saving'); autosave.mutate(); });
+                                    }}
                                 className="min-h-10 px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-slate-200 text-xs flex items-center gap-2 disabled:opacity-60"
                             >
                                 <Save className="w-4 h-4" />حفظ
@@ -3418,24 +3899,26 @@ function WorkspaceDraftsPageContent() {
                                     صفحة الجاهز للنشر
                                 </NextLink>
                             )}
-                            <button
-                                disabled={applyToArticle.isPending || !hasSubmissionBody}
-                                onClick={() => {
-                                    trackNextAction('workspace_drafts', 'إرسال لاعتماد رئيس التحرير', surfaceDetails);
-                                    runWithGuide('apply', () => applyToArticle.mutate());
-                                }}
+                                <button
+                                    disabled={applyToArticle.isPending || !hasSubmissionBody}
+                                    onClick={() => {
+                                        registerInteraction('إرسال لاعتماد رئيس التحرير', { area: 'workspace_primary_actions' });
+                                        trackNextAction('workspace_drafts', 'إرسال لاعتماد رئيس التحرير', surfaceDetails);
+                                        runWithGuide('apply', () => applyToArticle.mutate());
+                                    }}
                                 data-tutorial={showEditorSubmitOverlay ? 'editor-submit' : undefined}
                                 className="min-h-10 px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-100 text-xs disabled:opacity-60"
                             >
                                 {applyToArticle.isPending ? 'جاري الإرسال...' : 'إرسال لاعتماد رئيس التحرير'}
                             </button>
                             {isJournalist && (
-                                <button
-                                    disabled={selfApproveDraft.isPending || !hasSubmissionBody}
-                                    onClick={() => {
-                                        trackNextAction('workspace_drafts', 'اعتماد مباشر', surfaceDetails);
-                                        runWithGuide('apply', () => selfApproveDraft.mutate());
-                                    }}
+                                    <button
+                                        disabled={selfApproveDraft.isPending || !hasSubmissionBody}
+                                        onClick={() => {
+                                            registerInteraction('اعتماد مباشر', { area: 'workspace_primary_actions' });
+                                            trackNextAction('workspace_drafts', 'اعتماد مباشر', surfaceDetails);
+                                            runWithGuide('apply', () => selfApproveDraft.mutate());
+                                        }}
                                     className="min-h-10 px-3 py-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-100 text-xs disabled:opacity-60"
                                 >
                                     {selfApproveDraft.isPending ? 'جاري الاعتماد...' : 'اعتماد مباشر'}
@@ -3452,6 +3935,7 @@ function WorkspaceDraftsPageContent() {
                             <div className="flex flex-wrap items-center gap-2">
                                 <button
                                     onClick={() => {
+                                        registerInteraction('فحص سريع', { area: 'workspace_quick_tools' });
                                         trackUiAction('workspace_drafts', 'فحص سريع', surfaceDetails);
                                         runWithGuide('quick_check', () => runQuickCheck.mutate());
                                     }}
@@ -3462,13 +3946,19 @@ function WorkspaceDraftsPageContent() {
                                     {runQuickCheck.isPending ? 'جاري الفحص...' : 'فحص سريع'}
                                 </button>
                                 <button
-                                    onClick={() => setToolsExpanded((prev) => !prev)}
+                                    onClick={() => {
+                                        registerInteraction(toolsExpanded ? 'إخفاء أدوات التحسين' : 'إظهار أدوات التحسين', { area: 'workspace_quick_tools' });
+                                        setToolsExpanded((prev) => !prev);
+                                    }}
                                     className="min-h-8 px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-slate-200 text-[11px]"
                                 >
                                     {toolsExpanded ? 'إخفاء أدوات التحسين' : 'إظهار أدوات التحسين'}
                                 </button>
                                 <button
-                                    onClick={() => setSmartHighlightEnabled((prev) => !prev)}
+                                    onClick={() => {
+                                        registerInteraction(smartHighlightEnabled ? 'إيقاف التظليل' : 'تفعيل التظليل', { area: 'workspace_quick_tools' });
+                                        setSmartHighlightEnabled((prev) => !prev);
+                                    }}
                                     className="min-h-8 px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-slate-200 text-[11px]"
                                 >
                                     {smartHighlightEnabled ? 'إيقاف التظليل' : 'تفعيل التظليل'}
@@ -3477,17 +3967,17 @@ function WorkspaceDraftsPageContent() {
                         </div>
                         {toolsExpanded && (
                             <div className="flex flex-wrap gap-2" data-tutorial={showEditorToolsOverlay ? 'editor-tools' : undefined}>
-                                <button disabled={runVerifier.isPending} onClick={() => runWithGuide('verify', () => runVerifier.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-200 text-xs flex items-center gap-2 disabled:opacity-60"><SearchCheck className="w-4 h-4" />{runVerifier.isPending ? 'جاري التحقق...' : 'تحقق'}</button>
-                                <button disabled={runProofread.isPending} onClick={() => runWithGuide('proofread', () => runProofread.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-lime-500/20 border border-lime-500/30 text-lime-200 text-xs disabled:opacity-60">{runProofread.isPending ? 'جاري التدقيق...' : 'تدقيق لغوي'}</button>
-                                <button disabled={runQuality.isPending} onClick={() => runWithGuide('quality', () => runQuality.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-200 text-xs disabled:opacity-60">{runQuality.isPending ? 'جاري التقييم...' : 'جودة'}</button>
-                                <button disabled={runReadiness.isPending} onClick={() => runWithGuide('publish_gate', () => runReadiness.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-200 text-xs disabled:opacity-60">{runReadiness.isPending ? 'جاري الفحص...' : 'بوابة النشر'}</button>
-                                <button disabled={rewrite.isPending} onClick={() => runWithGuide('improve', () => rewrite.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2 disabled:opacity-60"><Sparkles className="w-4 h-4" />{rewrite.isPending ? 'جاري التحسين...' : 'تحسين'}</button>
-                                <button disabled={runHeadlines.isPending} onClick={() => runWithGuide('headlines', () => runHeadlines.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-200 text-xs disabled:opacity-60">{runHeadlines.isPending ? 'جاري التوليد...' : 'عناوين'}</button>
-                                <button disabled={runSeo.isPending} onClick={() => runWithGuide('seo', () => runSeo.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/30 text-fuchsia-200 text-xs disabled:opacity-60">{runSeo.isPending ? 'جاري التحليل...' : 'SEO'}</button>
-                                <button disabled={runLinks.isPending} onClick={() => runWithGuide('links', () => runLinks.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-200 text-xs disabled:opacity-60">{runLinks.isPending ? 'جاري جلب الروابط...' : 'روابط'}</button>
-                                <button disabled={runSocial.isPending} onClick={() => runWithGuide('social', () => runSocial.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-200 text-xs disabled:opacity-60">{runSocial.isPending ? 'جاري التوليد...' : 'سوشيال'}</button>
+                                <button disabled={runVerifier.isPending} onClick={() => { registerInteraction('تحقق', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'تحقق', surfaceDetails); runWithGuide('verify', () => runVerifier.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-200 text-xs flex items-center gap-2 disabled:opacity-60"><SearchCheck className="w-4 h-4" />{runVerifier.isPending ? 'جاري التحقق...' : 'تحقق'}</button>
+                                <button disabled={runProofread.isPending} onClick={() => { registerInteraction('تدقيق لغوي', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'تدقيق لغوي', surfaceDetails); runWithGuide('proofread', () => runProofread.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-lime-500/20 border border-lime-500/30 text-lime-200 text-xs disabled:opacity-60">{runProofread.isPending ? 'جاري التدقيق...' : 'تدقيق لغوي'}</button>
+                                <button disabled={runQuality.isPending} onClick={() => { registerInteraction('جودة', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'جودة', surfaceDetails); runWithGuide('quality', () => runQuality.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-200 text-xs disabled:opacity-60">{runQuality.isPending ? 'جاري التقييم...' : 'جودة'}</button>
+                                <button disabled={runReadiness.isPending} onClick={() => { registerInteraction('بوابة النشر', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'بوابة النشر', surfaceDetails); runWithGuide('publish_gate', () => runReadiness.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-200 text-xs disabled:opacity-60">{runReadiness.isPending ? 'جاري الفحص...' : 'بوابة النشر'}</button>
+                                <button disabled={rewrite.isPending} onClick={() => { registerInteraction('تحسين', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'تحسين', surfaceDetails); runWithGuide('improve', () => rewrite.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs flex items-center gap-2 disabled:opacity-60"><Sparkles className="w-4 h-4" />{rewrite.isPending ? 'جاري التحسين...' : 'تحسين'}</button>
+                                <button disabled={runHeadlines.isPending} onClick={() => { registerInteraction('عناوين', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'عناوين', surfaceDetails); runWithGuide('headlines', () => runHeadlines.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-200 text-xs disabled:opacity-60">{runHeadlines.isPending ? 'جاري التوليد...' : 'عناوين'}</button>
+                                <button disabled={runSeo.isPending} onClick={() => { registerInteraction('SEO', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'SEO', surfaceDetails); runWithGuide('seo', () => runSeo.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/30 text-fuchsia-200 text-xs disabled:opacity-60">{runSeo.isPending ? 'جاري التحليل...' : 'SEO'}</button>
+                                <button disabled={runLinks.isPending} onClick={() => { registerInteraction('روابط', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'روابط', surfaceDetails); runWithGuide('links', () => runLinks.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-200 text-xs disabled:opacity-60">{runLinks.isPending ? 'جاري جلب الروابط...' : 'روابط'}</button>
+                                <button disabled={runSocial.isPending} onClick={() => { registerInteraction('سوشيال', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'سوشيال', surfaceDetails); runWithGuide('social', () => runSocial.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-200 text-xs disabled:opacity-60">{runSocial.isPending ? 'جاري التوليد...' : 'سوشيال'}</button>
                                 {isAdvancedMode && (
-                                    <button disabled={runAudienceSimulation.isPending} onClick={() => runWithGuide('audience_test', () => runAudienceSimulation.mutate())} className="min-h-9 px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-100 text-xs disabled:opacity-60">محاكي الجمهور</button>
+                                    <button disabled={runAudienceSimulation.isPending} onClick={() => { registerInteraction('محاكي الجمهور', { area: 'workspace_quick_tools' }); trackUiAction('workspace_drafts', 'محاكي الجمهور', surfaceDetails); runWithGuide('audience_test', () => runAudienceSimulation.mutate()); }} className="min-h-9 px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-100 text-xs disabled:opacity-60">محاكي الجمهور</button>
                                 )}
                             </div>
                         )}

@@ -1360,6 +1360,21 @@ async def make_decision(
         raise HTTPException(status_code=422, detail="reason is required when decision=reject")
 
     if data.decision == "approve":
+        policy_report_row = await _latest_stage_report(db, article_id=article_id, stage="EDITORIAL_POLICY")
+        policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+        gate_result = await quality_gate_service.run_submission_quality_gates(
+            db,
+            article_id=article_id,
+            policy_report=policy_payload,
+        )
+        if not gate_result.passed:
+            raise HTTPException(
+                status_code=412,
+                detail={
+                    "message": "لا يمكن تحويل الخبر إلى مرحلة التسليم قبل تجاوز بوابة الجودة.",
+                    "blocking_reasons": [issue.message for issue in gate_result.blockers],
+                },
+            )
         await _transition_article_status(
             db=db,
             article=article,
@@ -1626,11 +1641,37 @@ async def process_article(
                         "actionable_fixes": audit.get("actionable_fixes", []),
                     },
                 )
-            article.status = NewsStatus.PUBLISHED
+            if article.status != NewsStatus.READY_FOR_MANUAL_PUBLISH:
+                await _transition_article_status(
+                    db=db,
+                    article=article,
+                    target_status=NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                    actor=current_user,
+                    action="process_publish_ready",
+                    reason=f"{current_user.role.value}_override",
+                    details={"article_id": article_id},
+                )
+            await _transition_article_status(
+                db=db,
+                article=article,
+                target_status=NewsStatus.PUBLISHED,
+                actor=current_user,
+                action="process_publish_now",
+                reason=f"{current_user.role.value}_override",
+                details={"article_id": article_id},
+            )
             article.published_at = datetime.utcnow()
             await bump_keyword_interactions(extract_keywords(article.title_ar or article.original_title), weight=3)
         else:
-            article.status = NewsStatus.APPROVED
+            await _transition_article_status(
+                db=db,
+                article=article,
+                target_status=NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                actor=current_user,
+                action="process_unpublish",
+                reason=f"{current_user.role.value}_override",
+                details={"article_id": article_id},
+            )
             article.published_at = None
             article.published_url = None
         db.add(

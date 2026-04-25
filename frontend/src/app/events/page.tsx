@@ -19,12 +19,14 @@ import {
 import {
     authApi,
     eventsApi,
+    milApi,
     type EventActionItem,
     type EventCoverageResponse,
     type EventMemoItem,
     type EventMemoReadiness,
     type EventMemoScope,
     type EventMemoStatus,
+    type MILEventInsights,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils';
@@ -167,11 +169,19 @@ export default function EventsPage() {
         refetchInterval: selectedId ? 30000 : false,
     });
 
+    const milEventInsightsQuery = useQuery({
+        queryKey: ['events-mil-insights', selectedId],
+        queryFn: async () => (await milApi.eventInsights(selectedId as number)).data,
+        enabled: Boolean(selectedId),
+        refetchInterval: selectedId ? 45000 : false,
+    });
+
     const items = useMemo(() => (listQuery.data?.data?.items || []) as EventMemoItem[], [listQuery.data?.data?.items]);
     const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId]);
     const actionItems = actionsQuery.data?.data?.items || [];
     const listError = listQuery.isError ? apiErrorMessage(listQuery.error, 'تعذر تحميل قائمة الأحداث.') : null;
     const coverage = (coverageQuery.data?.data || null) as EventCoverageResponse | null;
+    const eventMil = (milEventInsightsQuery.data || null) as MILEventInsights | null;
     const playbooks = playbooksQuery.data?.data || [];
     const users = usersQuery.data?.data || [];
     const defaultOwnerId = users.find((u) => WRITE_ROLES.has((u.role || '').toLowerCase()))?.id || null;
@@ -462,6 +472,65 @@ export default function EventsPage() {
                                 <p className="text-xs text-gray-300">الجاهزية: {selected.readiness_score}%</p>
                                 <p className="text-xs text-gray-400">آخر تحديث: {formatRelativeTime(selected.updated_at)}</p>
                                 {selected.story_title && <p className="text-xs text-purple-200">{selected.story_title}</p>}
+                                {eventMil && (
+                                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-[11px] uppercase tracking-[0.22em] text-cyan-300/80">MIL Radar</p>
+                                                <p className="text-sm font-medium text-white mt-1">استخبارات الحدث قبل التصعيد</p>
+                                            </div>
+                                            <Sparkles className="w-4 h-4 text-cyan-300" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <MiniSignalStat label="حرارة التغطية" value={eventMil.attention_level} />
+                                            <MiniSignalStat label="الانتشار الجغرافي" value={eventMil.geographic_spread} />
+                                            <MiniSignalStat label="الصلة الاجتماعية" value={eventMil.social_relevance} />
+                                            <MiniSignalStat label="خطر فوات التغطية" value={eventMil.coverage_risk} />
+                                        </div>
+                                        {eventMil.suggested_pack.length > 0 && (
+                                            <div className="space-y-2">
+                                                <p className="text-[11px] text-gray-400">حزمة التغطية المقترحة</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {eventMil.suggested_pack.map((pack) => (
+                                                        <span key={pack} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-gray-100">
+                                                            {pack}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {eventMil.cards.length > 0 && (
+                                            <div className="space-y-2">
+                                                {eventMil.cards.slice(0, 3).map((card) => (
+                                                    <a
+                                                        key={`${card.title}-${card.summary}`}
+                                                        href={card.href || undefined}
+                                                        className={cn(
+                                                            'block rounded-lg border px-3 py-2 transition-colors',
+                                                            card.tone === 'high'
+                                                                ? 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10'
+                                                                : card.tone === 'medium'
+                                                                  ? 'border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10'
+                                                                  : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]',
+                                                        )}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-sm text-white">{card.title}</p>
+                                                                <p className="mt-1 text-xs text-gray-300 leading-5">{card.summary}</p>
+                                                            </div>
+                                                            {card.confidence_score != null && (
+                                                                <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
+                                                                    {Math.round(card.confidence_score * 100)}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 <div className="flex flex-wrap gap-2">
                                     <SmallAction onClick={() => statusMutation.mutate({ id: selected.id, status: 'monitoring' })} label="متابعة" icon={Eye} />
                                     <SmallAction onClick={() => readinessMutation.mutate({ id: selected.id, readiness_status: 'ready' })} label="جاهز" icon={CheckCircle2} />
@@ -596,6 +665,15 @@ function SmallAction({
             <Icon className="w-3 h-3" />
             {label}
         </button>
+    );
+}
+
+function MiniSignalStat({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+            <p className="text-[10px] text-gray-400">{label}</p>
+            <p className="mt-1 text-xs text-white">{value}</p>
+        </div>
     );
 }
 

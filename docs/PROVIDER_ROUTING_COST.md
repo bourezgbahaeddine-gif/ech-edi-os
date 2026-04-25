@@ -13,7 +13,6 @@ This document describes the current cost-aware provider routing behavior for AI 
 PROVIDER_DAILY_BUDGET_USD=12.0
 PROVIDER_PER_JOB_MAX_USD=0.20
 PROVIDER_COST_ESTIMATE_GEMINI_USD=0.03
-PROVIDER_COST_ESTIMATE_GROQ_USD=0.015
 PROVIDER_QUEUE_TIER_SCRIBE=balanced
 PROVIDER_QUEUE_TIER_QUALITY=high
 PROVIDER_QUEUE_TIER_SIMULATOR=balanced
@@ -27,7 +26,7 @@ Equivalent `ECHOROUK_OS_...` prefixed variables are supported as well.
 1. Provider health is checked first (circuit-open providers are excluded).
 2. Queue tier + urgency pick a preferred provider:
    - `high` -> prefer `gemini`
-   - `low` -> prefer `groq`
+   - `low` -> prefer `gemini-flash`
    - `balanced` -> weighted selection (`provider_weight_*`)
    - Current urgency sources:
      - Scribe drafts: from article urgency/breaking

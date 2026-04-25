@@ -51,8 +51,9 @@ const AUTH_TOKEN_KEY = 'echorouk_access_token';
 
 function getHomePathByRole(role: string): string {
     const normalized = (role || '').toLowerCase();
-    if (normalized === 'director' || normalized === 'editor_chief') return '/';
-    return '/news';
+    if (normalized === 'director') return '/';
+    if (normalized === 'editor_chief') return '/today';
+    return '/today';
 }
 
 export const useAuth = () => useContext(AuthContext);
@@ -167,4 +168,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         </AuthContext.Provider>
     );
 }
-

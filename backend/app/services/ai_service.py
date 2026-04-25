@@ -1,8 +1,7 @@
 """
 Echorouk Editorial OS — AI Service
 ================================
-Unified interface for AI model calls (Gemini Flash/Pro, Groq).
-Tiered Processing: Python → Flash → Groq → Pro (cost optimization).
+Unified interface for Gemini model calls.
 """
 
 import json
@@ -23,11 +22,10 @@ settings = get_settings()
 
 
 class AIService:
-    """Unified AI service with tiered model selection."""
+    """Unified AI service with Gemini-based model selection."""
 
     def __init__(self):
         self._gemini_client = None
-        self._groq_client = None
 
     @staticmethod
     def _is_rate_limited_error(exc: Exception) -> bool:
@@ -56,14 +54,6 @@ class AIService:
             genai.configure(api_key=api_key)
             self._gemini_client = genai
         return self._gemini_client
-
-    async def _get_groq(self):
-        """Lazy-load Groq client."""
-        api_key = await settings_service.get_value("GROQ_API_KEY", settings.groq_api_key)
-        if self._groq_client is None and api_key:
-            from groq import Groq
-            self._groq_client = Groq(api_key=api_key)
-        return self._groq_client
 
     @staticmethod
     def _sanitize_error_for_logs(error: Exception) -> str:
@@ -157,7 +147,7 @@ Output Schema (JSON only, no markdown):
         route_context: dict | None = None,
     ) -> dict:
         """
-        Rewrite an article in Echorouk style using Groq (fast) or Gemini Flash.
+        Rewrite an article in Echorouk style using Gemini Flash.
         """
         prompt = f"""أنت رئيس تحرير رقمي في جريدة الشروق.
 المطلوب: صياغة مسودة خبر عربية احترافية من النص التالي فقط، بدون اختراع أي معلومة.
@@ -204,19 +194,8 @@ SEO:
 {content[:6000]}"""
 
         async def _run(provider_name: str) -> dict:
-            if provider_name == "groq":
-                groq = await self._get_groq()
-                if not groq:
-                    raise RuntimeError("groq_not_configured")
-                response = groq.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.35,
-                    max_tokens=4000,
-                )
-                result_text = response.choices[0].message.content.strip()
-                return self._parse_json_response(result_text)
-
+            if provider_name != "gemini":
+                raise RuntimeError(f"unsupported_provider:{provider_name}")
             gemini = await self._get_gemini()
             if not gemini:
                 raise RuntimeError("gemini_not_configured")
@@ -225,15 +204,9 @@ SEO:
             result_text = response.text.strip()
             return self._parse_json_response(result_text)
 
-        async def _fallback(provider_name: str, exc: Exception) -> dict:
-            logger.warning("provider_rewrite_failed", provider=provider_name, error=self._sanitize_error_for_logs(exc), msg="retry_with_fallback_provider")
-            alt = "gemini" if provider_name != "gemini" else "groq"
-            return await _run(alt)
-
         try:
             return await provider_manager.call(
                 run_fn=_run,
-                fallback_fn=_fallback,
                 route_context=route_context or {"queue_name": "ai_quality", "urgency": "normal"},
             )
         except Exception as e:  # noqa: BLE001
@@ -302,20 +275,10 @@ Articles:
             return ""
 
     async def generate_text(self, prompt: str, route_context: dict | None = None) -> str:
-        """Generate text using provider manager with fallback."""
+        """Generate text using the active provider."""
         async def _run(provider_name: str) -> str:
-            if provider_name == "groq":
-                groq = await self._get_groq()
-                if not groq:
-                    raise RuntimeError("groq_not_configured")
-                response = groq.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                    max_tokens=2500,
-                )
-                return (response.choices[0].message.content or "").strip()
-
+            if provider_name != "gemini":
+                raise RuntimeError(f"unsupported_provider:{provider_name}")
             gemini = await self._get_gemini()
             if not gemini:
                 raise RuntimeError("gemini_not_configured")
@@ -323,15 +286,9 @@ Articles:
             response = model.generate_content(prompt)
             return response.text.strip()
 
-        async def _fallback(provider_name: str, exc: Exception) -> str:
-            logger.warning("provider_generate_text_failed", provider=provider_name, error=self._sanitize_error_for_logs(exc))
-            alt = "gemini" if provider_name != "gemini" else "groq"
-            return await _run(alt)
-
         try:
             return await provider_manager.call(
                 run_fn=_run,
-                fallback_fn=_fallback,
                 route_context=route_context or {"queue_name": "ai_scribe", "urgency": "normal"},
             )
         except Exception as e:

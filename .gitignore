@@ -3,6 +3,8 @@
 .env
 .env.local
 .env.*
+.env.save
+.env.backup.*
 
 # Python specific
 __pycache__/
@@ -45,4 +47,9 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# Local backups / dumps
+*.sql.gz
+*.tar.gz
+postgres_data.sql
 ```

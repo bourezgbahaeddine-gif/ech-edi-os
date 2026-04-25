@@ -367,7 +367,7 @@ docker logs ech-worker --since 15m | grep -E "script_generate|script_generation_
 ```
 
 ### Common causes
-- Provider not configured (`GEMINI_API_KEY` / `GROQ_API_KEY`).
+- Provider not configured (`GEMINI_API_KEY`).
 - Queue backpressure on `ai_scripts`.
 - Worker not running latest backend image.
 

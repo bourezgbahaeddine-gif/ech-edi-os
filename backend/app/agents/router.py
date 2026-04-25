@@ -18,6 +18,7 @@ from app.models import Article, Source, NewsStatus, NewsCategory, UrgencyLevel
 from app.services.ai_service import ai_service
 from app.services.cache_service import cache_service
 from app.services.notification_service import notification_service
+from app.services.state_transition_service import state_transition_service
 
 logger = get_logger("agent.router")
 settings = get_settings()
@@ -278,6 +279,22 @@ class RouterAgent:
     This can reduce AI calls by 50-80%.
     """
 
+    @staticmethod
+    async def _transition_article_status(
+        db: AsyncSession,
+        article: Article,
+        target_status: NewsStatus,
+    ) -> None:
+        expected_status = article.status or NewsStatus.NEW
+        locked_article, _ = await state_transition_service.transition_article(
+            db=db,
+            article_id=article.id,
+            target=target_status,
+            expected_current=expected_status,
+            entity=f"article:{article.id}",
+        )
+        article.status = locked_article.status
+
     async def process_batch(self, db: AsyncSession, limit: int = 50) -> dict:
         """Process a batch of NEW articles through triage."""
         stats = {"processed": 0, "candidates": 0, "ai_calls": 0, "ai_skipped": 0, "breaking": 0}
@@ -314,7 +331,7 @@ class RouterAgent:
                 logger.error("router_article_error",
                              article_id=article.id,
                              error=str(e))
-                article.status = NewsStatus.CLEANED  # Park it
+                await self._transition_article_status(db, article, NewsStatus.CLEANED)
                 article.retry_count += 1
 
         await db.commit()
@@ -366,21 +383,21 @@ class RouterAgent:
         # Step 0: Early noise gate (before paying any AI cost)
         noisy, noisy_reason = self._noise_gate(article, text_lower)
         if noisy:
-            article.status = NewsStatus.ARCHIVED
+            await self._transition_article_status(db, article, NewsStatus.ARCHIVED)
             article.importance_score = 0
             article.rejection_reason = f"auto_filtered:{noisy_reason}"
             return
 
         # Step 0b: Arabic sources should produce Arabic headlines.
         if self._is_arabic_source(article, source) and not ARABIC_CHAR_RE.search(article.original_title or ""):
-            article.status = NewsStatus.REJECTED
+            await self._transition_article_status(db, article, NewsStatus.REJECTED)
             article.importance_score = 0
             article.rejection_reason = "auto_filtered:arabic_source_non_arabic_title"
             return
 
         # Timing gate: do not keep stale entries as "new/candidate" in newsroom flow.
         if self._is_article_stale_for_newsroom(article):
-            article.status = NewsStatus.ARCHIVED
+            await self._transition_article_status(db, article, NewsStatus.ARCHIVED)
             article.is_breaking = False
             article.urgency = UrgencyLevel.LOW
             article.importance_score = 0
@@ -485,9 +502,9 @@ class RouterAgent:
         if not quality_ok:
             # Keep Google News items for monitoring, but do not push them to editorial candidates.
             if self._is_google_aggregator(article.source_name or ""):
-                article.status = NewsStatus.CLASSIFIED
+                await self._transition_article_status(db, article, NewsStatus.CLASSIFIED)
             else:
-                article.status = NewsStatus.ARCHIVED
+                await self._transition_article_status(db, article, NewsStatus.ARCHIVED)
             article.importance_score = 0
             article.rejection_reason = f"auto_filtered:{quality_reason}"
             return
@@ -511,7 +528,8 @@ class RouterAgent:
             is_candidate = False
 
         if is_candidate:
-            article.status = NewsStatus.CANDIDATE
+            await self._transition_article_status(db, article, NewsStatus.CLASSIFIED)
+            await self._transition_article_status(db, article, NewsStatus.CANDIDATE)
             stats["candidates"] += 1
 
             # Notify editors (deduped per article for 12h)
@@ -528,7 +546,7 @@ class RouterAgent:
                 )
                 await cache_service.set(notify_key, "1", ttl=timedelta(hours=12))
         else:
-            article.status = NewsStatus.CLASSIFIED
+            await self._transition_article_status(db, article, NewsStatus.CLASSIFIED)
             article.rejection_reason = "auto_filtered:low_editorial_value"
 
     def _select_articles_for_batch(

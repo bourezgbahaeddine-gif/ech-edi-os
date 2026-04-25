@@ -81,7 +81,7 @@ Reference: `backend/app/services/provider_manager.py`
 
 Implemented:
 - provider health snapshot
-- weighted selection (`provider_weight_gemini`, `provider_weight_groq`)
+- weighted selection (`provider_weight_gemini`)
 - circuit breaker (`provider_circuit_failures`, `provider_circuit_open_sec`)
 - latency tracking (rolling p50 approximation)
 - fallback call path
@@ -117,4 +117,3 @@ Current integration:
 - Reject enqueue with HTTP `429` when queue depth exceeds threshold.
 - Keep editorial pages responsive by returning ticket immediately.
 - Operators inspect failed jobs in `/jobs/dead-letter` then retry selected jobs.
-

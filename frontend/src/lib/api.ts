@@ -5,7 +5,49 @@
 
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+const DEFAULT_API_BASE = '/api/v1';
+
+function trimTrailingSlash(value: string): string {
+    return value.replace(/\/$/, '');
+}
+
+function resolveApiBaseUrl(): string {
+    const configuredValue = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+    if (!configuredValue) {
+        return DEFAULT_API_BASE;
+    }
+
+    if (configuredValue.startsWith('/')) {
+        return trimTrailingSlash(configuredValue) || DEFAULT_API_BASE;
+    }
+
+    if (typeof window === 'undefined') {
+        return trimTrailingSlash(configuredValue);
+    }
+
+    try {
+        const parsedUrl = new URL(configuredValue, window.location.origin);
+        const safePath = trimTrailingSlash(parsedUrl.pathname || DEFAULT_API_BASE) || DEFAULT_API_BASE;
+
+        // When the app is served over HTTPS, keep browser requests same-origin and
+        // only trust the configured path. This prevents stale IP/domain build-time
+        // values from causing mixed-content or cross-origin login failures.
+        if (window.location.protocol === 'https:') {
+            return safePath;
+        }
+
+        if (parsedUrl.origin === window.location.origin) {
+            return safePath;
+        }
+
+        return trimTrailingSlash(parsedUrl.toString());
+    } catch {
+        return DEFAULT_API_BASE;
+    }
+}
+
+export const API_BASE = resolveApiBaseUrl();
 
 export const api = axios.create({
     baseURL: API_BASE,
@@ -175,6 +217,220 @@ export interface DashboardStats {
     sources_total: number;
     ai_calls_today: number;
     avg_processing_ms: number | null;
+}
+
+export type MILTriageAction = 'suggest' | 'flag' | 'escalate';
+export type MILPriority = 'low' | 'medium' | 'high' | 'critical';
+export type MILTargetSurface =
+    | 'today_orchestration'
+    | 'editorial_sidebar'
+    | 'stories_workspace'
+    | 'events_board'
+    | 'director_dashboard'
+    | 'editor_context';
+export type MILSignalType =
+    | 'cluster_growth'
+    | 'mention_spike'
+    | 'topic_velocity'
+    | 'repeated_entity_burst'
+    | 'competitor_coverage_gap'
+    | 'competitor_breakout_story'
+    | 'competitor_speed_advantage'
+    | 'story_momentum_up'
+    | 'story_momentum_down'
+    | 'story_needs_followup'
+    | 'pre_event_attention_rise'
+    | 'event_localization_growth'
+    | 'newsroom_missing_angle'
+    | 'archive_relevance_found'
+    | 'multi_source_confirmation'
+    | 'low_trust_source_spread'
+    | 'single_source_claim_only';
+
+export interface MILSignalPayload {
+    title: string;
+    entity?: string | null;
+    event_summary: string;
+    related_sources: string[];
+    related_article_ids: number[];
+    source_count: number;
+    cluster_id?: number | null;
+    action_suggested: MILTriageAction;
+    target_surface: MILTargetSurface;
+    recommended_action: string;
+    metadata: Record<string, unknown>;
+}
+
+export interface MILSignalExplanation {
+    reason_codes: string[];
+    human_summary: string;
+    metrics: Record<string, string | number>;
+}
+
+export interface MILSignalListItem {
+    id: number;
+    signal_code: string;
+    signal_type: MILSignalType;
+    triage_action: MILTriageAction;
+    priority: MILPriority;
+    confidence_score: number;
+    target_surface: MILTargetSurface;
+    status: 'active' | 'dismissed' | 'consumed' | 'archived';
+    payload: MILSignalPayload;
+    explanation: MILSignalExplanation;
+    related_story_id?: number | null;
+    related_event_id?: number | null;
+    related_cluster_id?: number | null;
+    created_at: string;
+    updated_at: string;
+    dismissed_at?: string | null;
+    dismissed_by?: number | null;
+    useful_count: number;
+    useful_last_marked_at?: string | null;
+    snoozed_until?: string | null;
+}
+
+export interface MILSignalDetail extends MILSignalListItem {
+    supports: Array<{
+        article_id?: number | null;
+        source_id?: number | null;
+        competitor_item_id?: number | null;
+        support_kind: string;
+        support_ref?: string | null;
+        weight: number;
+        created_at: string;
+    }>;
+}
+
+export interface MILTodayCard {
+    signal_id: number;
+    signal_code: string;
+    title: string;
+    why_it_matters: string;
+    confidence_score: number;
+    recommended_action: string;
+    source_count: number;
+    target_surface: MILTargetSurface;
+    href?: string | null;
+    created_at: string;
+    signal_type: MILSignalType;
+    triage_action: MILTriageAction;
+    priority: MILPriority;
+    useful_count: number;
+}
+
+export interface MILTodaySection {
+    key: string;
+    title: string;
+    hint: string;
+    items: MILTodayCard[];
+}
+
+export interface MILTodayFullResponse {
+    generated_at: string;
+    critical_now: MILTodaySection;
+    watch_closely: MILTodaySection;
+    opportunities: MILTodaySection;
+}
+
+export interface MILDashboardMetric {
+    key: string;
+    label: string;
+    value: string | number;
+    hint?: string | null;
+    tone: string;
+}
+
+export interface MILDashboardListItem {
+    title: string;
+    subtitle?: string | null;
+    hint: string;
+    href?: string | null;
+    confidence_score?: number | null;
+}
+
+export interface MILDashboardResponse {
+    generated_at: string;
+    metrics: MILDashboardMetric[];
+    rising_stories: MILDashboardListItem[];
+    missed_opportunities: MILDashboardListItem[];
+    competitor_pressure: MILDashboardListItem[];
+    source_trust_watch: MILDashboardListItem[];
+}
+
+export interface MILInsightItem {
+    title: string;
+    summary: string;
+    tone: string;
+    confidence_score?: number | null;
+    href?: string | null;
+}
+
+export interface MILStoryInsights {
+    story_id: number;
+    story_title: string;
+    momentum: string;
+    competitor_pressure: string;
+    archive_angle?: string | null;
+    follow_up_angle?: string | null;
+    linked_entities: string[];
+    cards: MILInsightItem[];
+}
+
+export interface MILEventInsights {
+    event_id: number;
+    event_title: string;
+    attention_level: string;
+    geographic_spread: string;
+    social_relevance: string;
+    coverage_risk: string;
+    suggested_pack: string[];
+    cards: MILInsightItem[];
+}
+
+export interface MILEditorContext {
+    draft_id: number;
+    article_id?: number | null;
+    work_id?: string | null;
+    live_signals: MILSignalListItem[];
+    archive_links: MILInsightItem[];
+    missing_angles: MILInsightItem[];
+    related_entities: string[];
+    competitor_angles: MILInsightItem[];
+}
+
+export interface MILActionResponse {
+    signal_id: number;
+    status: string;
+    useful_count: number;
+    snoozed_until?: string | null;
+}
+
+export interface MILClusterSummary {
+    id: number;
+    cluster_key: string;
+    label: string;
+    dominant_entity?: string | null;
+    article_count: number;
+    source_diversity_count: number;
+    velocity_score: number;
+    confidence_score: number;
+    target_surface: string;
+    first_seen_at: string;
+    last_seen_at: string;
+    metadata_json: Record<string, unknown>;
+}
+
+export interface MILEntitySummary {
+    id: number;
+    entity_name: string;
+    entity_type: string;
+    normalized_name: string;
+    aliases_json: string[];
+    mention_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+    trust_context_json: Record<string, unknown>;
 }
 
 export interface PipelineRun {
@@ -1593,6 +1849,27 @@ export const dashboardApi = {
         api.post<TimeIntegrityWatchlistApplyResponse>('/dashboard/time-integrity/watchlist/apply', null, { params }),
 };
 
+export const milApi = {
+    analyzeRecent: (payload?: { hours?: number; max_articles?: number; include_competitors?: boolean }) =>
+        api.post<{ job_id: string; status: string; job_type: string }>('/mil/analyze/recent', payload || {}),
+    signals: (params?: { triage_action?: MILTriageAction; status?: string; limit?: number }) =>
+        api.get<MILSignalListItem[]>('/mil/signals', { params }),
+    signalDetail: (signalId: number) => api.get<MILSignalDetail>(`/mil/signals/${signalId}`),
+    dismissSignal: (signalId: number, payload?: { note?: string }) =>
+        api.post<{ signal_id: number; status: string; dismissed_at?: string | null }>(`/mil/signals/${signalId}/dismiss`, payload || {}),
+    todayEscalations: (params?: { limit?: number }) => api.get<MILTodayCard[]>('/mil/today/escalations', { params }),
+    todayFull: (params?: { limit_per_section?: number }) => api.get<MILTodayFullResponse>('/mil/today/full', { params }),
+    dashboard: () => api.get<MILDashboardResponse>('/mil/dashboard'),
+    entities: (params?: { limit?: number }) => api.get<MILEntitySummary[]>('/mil/entities', { params }),
+    clusters: (params?: { limit?: number }) => api.get<MILClusterSummary[]>('/mil/clusters', { params }),
+    storyInsights: (storyId: number) => api.get<MILStoryInsights>(`/mil/stories/${storyId}/insights`),
+    eventInsights: (eventId: number) => api.get<MILEventInsights>(`/mil/events/${eventId}/insights`),
+    editorContext: (params: { draft_id?: number; work_id?: string }) => api.get<MILEditorContext>('/mil/editor/context', { params }),
+    markUseful: (signalId: number) => api.post<MILActionResponse>(`/mil/signals/${signalId}/useful`, {}),
+    snoozeSignal: (signalId: number, payload?: { hours?: number }) =>
+        api.post<MILActionResponse>(`/mil/signals/${signalId}/snooze`, payload || { hours: 6 }),
+};
+
 export const jobsApi = {
     getJob: (jobId: string) => api.get<JobStatusResponse>(`/jobs/${jobId}`),
     getSla: (params?: { lookback_hours?: number }) => api.get<QueueSlaResponse>('/jobs/sla', { params }),
@@ -3004,4 +3281,3 @@ api.interceptors.response.use(
         return Promise.reject(error);
     }
 );
-

@@ -10,3 +10,7 @@ def test_invalid_transition_rejected_to_candidate() -> None:
     result = validate_transition(NewsStatus.REJECTED, NewsStatus.CANDIDATE)
     assert result.valid is False
     assert NewsStatus.CANDIDATE not in result.allowed_targets
+
+
+def test_valid_transition_published_to_ready_for_manual_publish() -> None:
+    assert can_transition(NewsStatus.PUBLISHED, NewsStatus.READY_FOR_MANUAL_PUBLISH)

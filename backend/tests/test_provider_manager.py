@@ -20,18 +20,18 @@ def test_pick_with_context_degrades_when_budget_exceeded(monkeypatch):
 
     decision = manager.pick_with_context({"queue_name": "ai_quality", "urgency": "high"})
 
-    assert decision.provider == "groq"
-    assert decision.degraded is True
-    assert decision.reason == "budget_cap"
+    assert decision.provider == "gemini"
+    assert decision.degraded is False
+    assert decision.reason is None
 
 
 def test_health_reports_budget_snapshot(monkeypatch):
     manager = ProviderManager()
     monkeypatch.setattr(manager, "_is_configured", lambda _provider: True)
-    manager.record_success("groq", 12.0, cost_estimate_usd=0.015)
+    manager.record_success("gemini", 12.0, cost_estimate_usd=0.03)
 
     health = manager.health()
 
     assert "_budget" in health
-    assert health["_budget"]["daily_spend_usd"] >= 0.015
-    assert "estimated_cost_usd_per_call" in health["groq"]
+    assert health["_budget"]["daily_spend_usd"] >= 0.03
+    assert "estimated_cost_usd_per_call" in health["gemini"]

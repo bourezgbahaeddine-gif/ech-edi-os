@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.domain.news.state_machine import can_transition
 from app.models import Article, ArticleVector, EditorialDraft, NewsStatus
 from app.services.article_index_service import article_index_service
 from app.services.ai_service import ai_service
 from app.services.cache_service import cache_service
 from app.services.embedding_service import embedding_service
 from app.services.echorouk_archive_service import echorouk_archive_service
+from app.services.state_transition_service import state_transition_service
 
 logger = get_logger("agent.scribe")
 settings = get_settings()
@@ -121,13 +121,19 @@ class ScribeAgent:
             if result_data.get("tags"):
                 article.keywords = result_data["tags"]
 
-            article.ai_model_used = "groq/gemini-flash"
+            article.ai_model_used = settings.gemini_model_flash
             article.title_ar = generated_title
             article.seo_title = generated_seo_title
             article.seo_description = generated_seo_description
-            if not can_transition(article.status, NewsStatus.DRAFT_GENERATED):
-                return {"error": f"Invalid transition to draft_generated from {article.status.value}"}
-            article.status = NewsStatus.DRAFT_GENERATED
+            expected_status = article.status or NewsStatus.NEW
+            locked_article, _ = await state_transition_service.transition_article(
+                db=db,
+                article_id=article.id,
+                target=NewsStatus.DRAFT_GENERATED,
+                expected_current=expected_status,
+                entity=f"article:{article.id}",
+            )
+            article.status = locked_article.status
             article.updated_at = datetime.utcnow()
 
             if fixed_work_id:

@@ -1,13 +1,14 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
-import { Bell, Search, LogOut, User, Shield, FileText, Sparkles, Loader2, Clipboard, X, Radar, AlertTriangle, Moon, Sun, Menu, BookOpen, GitBranch, Megaphone } from 'lucide-react';
+import { Bell, Search, LogOut, User, Shield, FileText, Sparkles, Loader2, Clipboard, X, Radar, AlertTriangle, Moon, Sun, Menu, Command } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { dashboardApi, type DashboardNotification, type PublishedMonitorLatestResponse } from '@/lib/api';
 import { journalistServicesApi } from '@/lib/journalist-services-api';
+import { classifyNotificationInterruption, filterNotificationsForRole, interruptionLabel } from '@/lib/notification-policy';
+import { trackMetricEvent } from '@/lib/ux-telemetry';
 
 const roleLabels: Record<string, string> = {
     director: 'المدير',
@@ -34,10 +35,12 @@ export default function TopBar({
     theme,
     onToggleTheme,
     onOpenSidebar,
+    onOpenCommandPalette,
 }: {
     theme: 'light' | 'dark';
     onToggleTheme: () => void;
     onOpenSidebar: () => void;
+    onOpenCommandPalette: () => void;
 }) {
     const { user, logout } = useAuth();
     const queryClient = useQueryClient();
@@ -48,13 +51,45 @@ export default function TopBar({
     const [showPublishedMonitor, setShowPublishedMonitor] = useState(false);
     const role = (user?.role || '').toLowerCase();
     const canUseQuickTasks = ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor', 'fact_checker'].includes(role);
+    const isDirector = role === 'director';
+    const notificationPanelOpenedAtRef = useRef<number | null>(null);
+    const notificationClickCountRef = useRef(0);
+    const notificationPanelSizeRef = useRef(0);
 
     const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
         queryKey: ['dashboard-notifications'],
         queryFn: () => dashboardApi.notifications({ limit: 20 }),
         refetchInterval: 30000,
     });
-    const notifications: DashboardNotification[] = notificationsData?.data?.items || [];
+    const notifications = filterNotificationsForRole((notificationsData?.data?.items || []) as DashboardNotification[], role);
+
+    useEffect(() => {
+        if (showNotifications) {
+            notificationPanelOpenedAtRef.current = Date.now();
+            notificationClickCountRef.current = 0;
+            notificationPanelSizeRef.current = notifications.length;
+            return;
+        }
+
+        if (!notificationPanelOpenedAtRef.current || notificationPanelSizeRef.current <= 0) {
+            return;
+        }
+
+        const visibleCount = notificationPanelSizeRef.current;
+        const clickedCount = notificationClickCountRef.current;
+        const ignoredCount = Math.max(visibleCount - clickedCount, 0);
+        trackMetricEvent('topbar', 'notification_ignore_rate', {
+            role: role || 'guest',
+            visible_notifications: visibleCount,
+            clicked_notifications: clickedCount,
+            ignored_notifications: ignoredCount,
+            ignore_rate: visibleCount > 0 ? Number((ignoredCount / visibleCount).toFixed(2)) : 0,
+            dwell_ms: Date.now() - notificationPanelOpenedAtRef.current,
+        });
+        notificationPanelOpenedAtRef.current = null;
+        notificationPanelSizeRef.current = 0;
+        notificationClickCountRef.current = 0;
+    }, [notifications.length, role, showNotifications]);
 
     return (
         <header className={`sticky top-0 z-30 backdrop-blur-xl border-b ${theme === 'dark' ? 'bg-gray-900/80 border-white/5' : 'app-surface border-[var(--border-primary)]'}`}>
@@ -105,7 +140,7 @@ export default function TopBar({
                         {canUseQuickTasks && (
                             <button
                                 onClick={() => setShowQuickTools(true)}
-                                className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
+                                className={`hidden xl:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
                                     theme === 'dark'
                                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                                         : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
@@ -115,40 +150,20 @@ export default function TopBar({
                                 مهام سريعة
                             </button>
                         )}
-                        <Link
-                            href="/how-editorial-os-works"
-                            className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
-                                theme === 'dark'
-                                    ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'
-                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
-                        >
-                            <BookOpen className="w-4 h-4" />
-                            كيف تعمل المنصة؟
-                        </Link>
-                        <Link
-                            href="/newsroom-flow"
-                            className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
-                                theme === 'dark'
-                                    ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'
-                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
-                        >
-                            <GitBranch className="w-4 h-4" />
-                            مسار غرفة الأخبار
-                        </Link>
-                        <Link
-                            href="/digital"
-                            className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
-                                theme === 'dark'
-                                    ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'
-                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
-                            }`}
-                        >
-                            <Megaphone className="w-4 h-4" />
-                            غرفة التغطية الرقمية
-                        </Link>
                         <button
+                            onClick={onOpenCommandPalette}
+                            className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
+                                theme === 'dark'
+                                    ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
+                            }`}
+                        >
+                            <Command className="w-4 h-4" />
+                            الأوامر
+                            <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-gray-400">Ctrl+K</span>
+                        </button>
+                        {isDirector && (
+                            <button
                             onClick={() => setShowPublishedMonitor(true)}
                             className={`hidden md:flex h-10 px-3 rounded-xl border text-xs items-center gap-1.5 ${
                                 theme === 'dark'
@@ -159,6 +174,7 @@ export default function TopBar({
                             <Radar className="w-4 h-4" />
                             جودة المنشور
                         </button>
+                        )}
 
                         <div className="relative">
                             <button
@@ -195,16 +211,34 @@ export default function TopBar({
                                                                 : '/trends'
                                                     }
                                                     onClick={(e) => {
+                                                        notificationClickCountRef.current += 1;
                                                         if (item.type === 'published_quality') {
                                                             e.preventDefault();
                                                             setShowNotifications(false);
                                                             setShowPublishedMonitor(true);
+                                                            return;
                                                         }
+                                                        setShowNotifications(false);
                                                     }}
                                                     className="block px-3 py-2 border-b border-white/5 hover:bg-white/5"
                                                 >
-                                                    <p className="text-xs text-white">{item.title}</p>
-                                                    <p className="text-[11px] text-gray-400 mt-0.5">{item.message}</p>
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs text-white">{item.title}</p>
+                                                            <p className="mt-0.5 text-[11px] text-gray-400">{item.message}</p>
+                                                        </div>
+                                                        <span
+                                                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
+                                                                classifyNotificationInterruption(item, role) === 'interrupt_now'
+                                                                    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                                                                    : classifyNotificationInterruption(item, role) === 'defer'
+                                                                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                                                                      : 'border-white/10 bg-white/5 text-slate-400'
+                                                            }`}
+                                                        >
+                                                            {interruptionLabel(classifyNotificationInterruption(item, role))}
+                                                        </span>
+                                                    </div>
                                                 </a>
                                             ))
                                         )}
@@ -256,7 +290,7 @@ export default function TopBar({
             <div className={`px-3 md:px-6 py-2 border-t ${theme === 'dark' ? 'border-white/5 bg-white/[0.02]' : 'border-[var(--border-primary)] bg-[var(--bg-tertiary)]'}`}>
                 <div className={`flex flex-wrap items-center gap-2 text-xs ${theme === 'dark' ? 'text-gray-300' : 'text-[var(--text-primary)]'}`}>
                     <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>الدستور التحريري يعمل كحارس قبل اعتماد النسخة النهائية.</span>
+                    <span>الدستور التحريري يبقى مرجع القرار قبل الاعتماد النهائي، بينما بقية الأدوات الإضافية انتقلت إلى لوحة الأوامر.</span>
                     <a href="/constitution" className="text-emerald-300 hover:text-emerald-200 underline">
                         فتح الدستور
                     </a>
@@ -598,5 +632,3 @@ function PublishedMonitorDrawer({
         document.body
     );
 }
-
-

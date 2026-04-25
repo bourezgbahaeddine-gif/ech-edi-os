@@ -34,7 +34,7 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
         NewsStatus.REJECTED,
     },
     NewsStatus.READY_FOR_MANUAL_PUBLISH: {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED},
-    NewsStatus.PUBLISHED: {NewsStatus.ARCHIVED},
+    NewsStatus.PUBLISHED: {NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.ARCHIVED},
     NewsStatus.REJECTED: set(),
     NewsStatus.ARCHIVED: set(),
 }
@@ -73,4 +73,3 @@ def validate_path(states: Iterable[NewsStatus]) -> bool:
     if len(sequence) <= 1:
         return True
     return all(can_transition(sequence[idx], sequence[idx + 1]) for idx in range(0, len(sequence) - 1))
-

@@ -6,7 +6,6 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
     AlertCircle,
     ArrowLeftCircle,
-    BookOpenText,
     ChevronDown,
     ChevronUp,
     ClipboardList,
@@ -18,7 +17,9 @@ import {
 
 import {
     editorialApi,
+    milApi,
     storiesApi,
+    type MILStoryInsights,
     type StoryClusterRecord,
     type StoryControlCenterResponse,
     type StoryGapItem,
@@ -29,6 +30,7 @@ import { WorkflowCard, WorkflowSection } from '@/components/workflow/WorkflowCar
 import { WorkflowHelpPanel } from '@/components/workflow/WorkflowHelpPanel';
 import { getWorkflowStatusLabel } from '@/lib/workflow-language';
 import { trackNextAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
+import { KnowledgeWorkspaceHeader } from '@/components/knowledge/KnowledgeWorkspaceHeader';
 
 export default function StoriesPage() {
     const router = useRouter();
@@ -172,6 +174,14 @@ export default function StoriesPage() {
         return mapped === 'source' ? 'followup' : mapped;
     }, [topStoryNextGap]);
 
+    const topStoryMilQuery = useQuery({
+        queryKey: ['stories-top-mil', topPriorityStory?.id],
+        queryFn: async () => (await milApi.storyInsights(topPriorityStory!.id)).data,
+        enabled: view === 'queues' && Boolean(topPriorityStory?.id),
+        staleTime: 60_000,
+    });
+    const topStoryMil = useMemo<MILStoryInsights | null>(() => topStoryMilQuery.data || null, [topStoryMilQuery.data]);
+
     const createStoryFromCluster = useMutation({
         mutationFn: async (payload: { articleId: number }) => {
             setActionErr(null);
@@ -218,14 +228,13 @@ export default function StoriesPage() {
 
     return (
         <div className="space-y-4" dir="rtl">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-white inline-flex items-center gap-2">
-                        <BookOpenText className="w-6 h-6 text-cyan-300" />
-                        القصص التحريرية
-                    </h1>
-                    <p className="text-xs text-slate-400 mt-1">لوحة قيادة القصة: تغطية، فجوات، خط زمني، وإجراءات سريعة.</p>
-                </div>
+            <KnowledgeWorkspaceHeader
+                activeHref="/stories"
+                title="القصص التحريرية"
+                description="هنا تتحول المعرفة والسياق إلى متابعة حية: قصص نشطة، فجوات تحتاج تدخلًا، ومجموعات يمكن تحويلها إلى ملكية تحريرية واضحة."
+            />
+
+            <div className="flex items-center justify-end">
                 <button
                     type="button"
                     onClick={() => {
@@ -316,19 +325,78 @@ export default function StoriesPage() {
                 storiesLoading ? (
                     <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-6 text-slate-400">جاري تحميل طوابير القصص...</div>
                 ) : (
-                    <StoryQueuesSection
-                        stories={storyDeskRows}
-                        totalStories={stories.length}
-                        queues={storyQueues}
-                        topStory={topPriorityStory}
-                        topStoryGaps={topStoryCenter?.gaps || []}
-                        topStoryCoverage={topStoryCenter?.overview.coverage_score ?? null}
-                        topStoryGapsLoading={topStoryCenterLoading}
-                        topStoryNextActionLabel={storyDraftModeLabel(topStoryNextMode)}
-                        nextActionPending={runTopStoryNextAction.isPending}
-                        onRunNextAction={() => runTopStoryNextAction.mutate()}
-                        onOpenStory={(storyId, source) => openStory(storyId, source)}
-                    />
+                    <div className="space-y-4">
+                        {topPriorityStory && topStoryMil && (
+                            <WorkflowSection
+                                title="MIL داخل القصص"
+                                hint="هنا تظهر حركة الزخم، ضغط المنافسين، والزاوية التالية للقصة الأهم الآن."
+                                icon={<Sparkles className="w-4 h-4 text-cyan-300" />}
+                                count={topStoryMil.cards.length}
+                            >
+                                <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 xl:col-span-1">
+                                        <div className="text-xs text-slate-400">القصة المختارة الآن</div>
+                                        <div className="mt-2 text-sm font-semibold text-white leading-7">{topStoryMil.story_title}</div>
+                                        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-100">
+                                                الزخم: {topStoryMil.momentum}
+                                            </span>
+                                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-100">
+                                                المنافسون: {topStoryMil.competitor_pressure}
+                                            </span>
+                                        </div>
+                                        {topStoryMil.follow_up_angle && (
+                                            <p className="mt-3 text-xs leading-6 text-slate-300">
+                                                {topStoryMil.follow_up_angle}
+                                            </p>
+                                        )}
+                                        {topStoryMil.archive_angle && (
+                                            <p className="mt-2 text-[11px] text-cyan-200">
+                                                زاوية أرشيفية: {topStoryMil.archive_angle}
+                                            </p>
+                                        )}
+                                        {topStoryMil.linked_entities.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-1.5">
+                                                {topStoryMil.linked_entities.slice(0, 6).map((entity) => (
+                                                    <span key={entity} className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] text-slate-300">
+                                                        {entity}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="xl:col-span-3 grid grid-cols-1 xl:grid-cols-3 gap-3">
+                                        {topStoryMil.cards.map((card) => (
+                                            <WorkflowCard
+                                                key={`${topStoryMil.story_id}-${card.title}`}
+                                                title={card.title}
+                                                subtitle={`MIL · ${card.confidence_score ? `${Math.round(card.confidence_score * 100)}٪` : 'رصد تشغيلي'}`}
+                                                reason={card.summary}
+                                                nextActionLabel="افتح القصة"
+                                                tone={card.tone === 'warn' ? 'warn' : card.tone === 'success' ? 'success' : 'default'}
+                                                compact
+                                                primaryAction={card.href ? { label: 'افتح القصة', href: card.href } : undefined}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            </WorkflowSection>
+                        )}
+
+                        <StoryQueuesSection
+                            stories={storyDeskRows}
+                            totalStories={stories.length}
+                            queues={storyQueues}
+                            topStory={topPriorityStory}
+                            topStoryGaps={topStoryCenter?.gaps || []}
+                            topStoryCoverage={topStoryCenter?.overview.coverage_score ?? null}
+                            topStoryGapsLoading={topStoryCenterLoading}
+                            topStoryNextActionLabel={storyDraftModeLabel(topStoryNextMode)}
+                            nextActionPending={runTopStoryNextAction.isPending}
+                            onRunNextAction={() => runTopStoryNextAction.mutate()}
+                            onOpenStory={(storyId, source) => openStory(storyId, source)}
+                        />
+                    </div>
                 )
             )}
 

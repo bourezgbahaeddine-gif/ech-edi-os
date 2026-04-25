@@ -52,3 +52,46 @@ export function trackUiAction(surface: string, actionLabel: string, details?: Ux
         details,
     });
 }
+
+export function trackModeChange(surface: string, mode: string, details?: UxDetails): void {
+    trackUxEvent({
+        event_name: 'page_mode_change',
+        surface,
+        action_label: mode,
+        details,
+    });
+}
+
+export function trackMetricEvent(surface: string, eventName: string, details?: UxDetails): void {
+    trackUxEvent({
+        event_name: eventName,
+        surface,
+        details,
+    });
+}
+
+export function useTrackFirstAction(surface: string, details?: UxDetails) {
+    const startedAtRef = useRef<number>(0);
+    const sentRef = useRef(false);
+
+    useEffect(() => {
+        startedAtRef.current = Date.now();
+        sentRef.current = false;
+    }, [surface]);
+
+    return (actionLabel: string, extraDetails?: UxDetails) => {
+        if (!sentRef.current) {
+            sentRef.current = true;
+            trackUxEvent({
+                event_name: 'time_to_first_action',
+                surface,
+                action_label: actionLabel,
+                details: {
+                    ...(details || {}),
+                    ...(extraDetails || {}),
+                    elapsed_ms: Date.now() - startedAtRef.current,
+                },
+            });
+        }
+    };
+}

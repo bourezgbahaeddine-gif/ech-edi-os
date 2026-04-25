@@ -34,10 +34,32 @@ from app.schemas.auth import (
     UserProfile,
     UserUpdateRequest,
 )
+from app.services.cache_service import cache_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger("auth")
 security = HTTPBearer()
+
+_LOGIN_RATE_PREFIX = "login_rate:"
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+
+async def _check_login_rate(username: str) -> None:
+    key = f"{_LOGIN_RATE_PREFIX}{username}"
+    attempts = await cache_service.get(key)
+    if attempts and int(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again in 5 minutes.",
+        )
+
+
+async def _record_failed_login(username: str) -> None:
+    key = f"{_LOGIN_RATE_PREFIX}{username}"
+    current = await cache_service.get(key)
+    count = int(current or 0) + 1
+    await cache_service.set(key, str(count), ttl=_LOGIN_WINDOW_SECONDS)
 
 
 def _require_director(user: User) -> None:
@@ -146,10 +168,12 @@ async def get_current_user(
 # -- Login --
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+    await _check_login_rate(request.username)
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(request.password, user.hashed_password):
+        await _record_failed_login(request.username)
         logger.warning("login_failed", username=request.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -173,6 +197,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         target=user,
         details={"ip_context": "api"},
     )
+    await cache_service.delete(f"{_LOGIN_RATE_PREFIX}{request.username}")
     await db.commit()
 
     token = create_access_token(

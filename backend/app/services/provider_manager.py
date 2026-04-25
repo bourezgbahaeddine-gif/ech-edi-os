@@ -43,15 +43,12 @@ class ProviderManager:
     def __init__(self) -> None:
         self._state: dict[str, ProviderState] = {
             "gemini": ProviderState(),
-            "groq": ProviderState(),
         }
         self._weights = {
             "gemini": max(0.01, settings.provider_weight_gemini),
-            "groq": max(0.01, settings.provider_weight_groq),
         }
         self._estimated_cost_usd = {
             "gemini": max(0.0, settings.provider_cost_estimate_gemini_usd),
-            "groq": max(0.0, settings.provider_cost_estimate_groq_usd),
         }
         self._daily_spend_usd_by_date: dict[str, float] = {}
 
@@ -108,8 +105,6 @@ class ProviderManager:
 
     @staticmethod
     def _is_configured(provider: str) -> bool:
-        if provider == "groq":
-            return bool((settings.groq_api_key or "").strip())
         if provider == "gemini":
             return bool((settings.gemini_api_key or "").strip())
         return True
@@ -155,7 +150,7 @@ class ProviderManager:
         if tier == "high" or urgency == "high":
             preferred = "gemini"
         elif tier == "low" or urgency == "low":
-            preferred = "groq"
+            preferred = self._cheapest_provider(eligible)
         else:
             preferred = random.choices(eligible, weights=[self._weights.get(p, 0.1) for p in eligible], k=1)[0]
 

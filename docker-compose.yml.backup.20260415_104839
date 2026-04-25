@@ -1,0 +1,230 @@
+name: echorouk_editorial_os
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
+    container_name: ech-backend
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      APP_ENV: production
+      APP_DEBUG: "false"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      freshrss:
+        condition: service_started
+      rssbridge:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
+    container_name: ech-worker
+    command: >
+      celery -A app.queue.celery_app:celery_app worker
+      --loglevel=INFO
+      --queues=ai_router,ai_scribe,ai_quality,ai_simulator,ai_msi,ai_links,ai_trends,ai_scripts
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      APP_ENV: production
+      APP_DEBUG: "false"
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  flower:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
+    container_name: ech-flower
+    command: celery -A app.queue.celery_app:celery_app flower --port=5555
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      APP_ENV: production
+      APP_DEBUG: "false"
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ech-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ech-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-echorouk_db}
+      POSTGRES_USER: ${POSTGRES_USER:-echorouk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echorouk2025secure}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./scripts/seed_sources.sql:/docker-entrypoint-initdb.d/02-seed-sources.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echorouk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ech-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: ech-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  freshrss-db:
+    image: mariadb:11
+    container_name: ech-freshrss-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${FRESHRSS_DB_ROOT_PASSWORD:-freshrss_root_change_me}
+      MYSQL_DATABASE: ${FRESHRSS_DB_NAME:-freshrss}
+      MYSQL_USER: ${FRESHRSS_DB_USER:-freshrss}
+      MYSQL_PASSWORD: ${FRESHRSS_DB_PASSWORD:-freshrss_change_me}
+    volumes:
+      - freshrss_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  freshrss:
+    image: freshrss/freshrss:latest
+    container_name: ech-freshrss
+    depends_on:
+      freshrss-db:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Africa/Algiers}
+      CRON_MIN: '*/20'
+      FRESHRSS_INSTALL: |-
+        --api-enabled
+        --base-url ${FRESHRSS_BASE_URL:-https://echswarm.agentdz.com/freshrss}
+        --db-base ${FRESHRSS_DB_NAME:-freshrss}
+        --db-host freshrss-db
+        --db-password ${FRESHRSS_DB_PASSWORD:-freshrss_change_me}
+        --db-type mysql
+        --db-user ${FRESHRSS_DB_USER:-freshrss}
+        --default-user ${FRESHRSS_ADMIN_USER:-admin}
+        --language ar
+        --auth-type form
+      FRESHRSS_USER: |-
+        --api-password=${FRESHRSS_API_PASSWORD:-change_me_api_password}
+        --email=${FRESHRSS_ADMIN_EMAIL:-admin@localhost}
+        --language=ar
+        --password=${FRESHRSS_ADMIN_PASSWORD:-change_me_admin_password}
+        --user=${FRESHRSS_ADMIN_USER:-admin}
+    ports:
+      - "8082:80"
+    volumes:
+      - freshrss_data:/var/www/FreshRSS/data
+      - freshrss_extensions:/var/www/FreshRSS/extensions
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+  rssbridge:
+    image: rssbridge/rss-bridge:latest
+    container_name: ech-rssbridge
+    ports:
+      - "8083:80"
+    volumes:
+      - ./docs/rssbridge/whitelist.txt:/app/whitelist.txt:ro
+    restart: unless-stopped
+    networks:
+      - ech-network
+
+volumes:
+  pgdata:
+  redis_data:
+  minio_data:
+  freshrss_db_data:
+  freshrss_data:
+  freshrss_extensions:
+
+networks:
+  ech-network:
+    driver: bridge

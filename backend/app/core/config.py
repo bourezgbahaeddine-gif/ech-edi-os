@@ -69,7 +69,6 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model_flash: str = "gemini-2.5-flash"
     gemini_model_pro: str = "gemini-2.5-pro"
-    groq_api_key: str = ""
     embedding_provider: str = "hash"  # gemini|hash
     embedding_model_gemini: str = "models/gemini-embedding-001"
     embedding_vector_dim: int = 256
@@ -111,8 +110,8 @@ class Settings(BaseSettings):
 
     # MinIO
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
     minio_bucket: str = "echorouk-media"
     minio_use_ssl: bool = False
 
@@ -200,13 +199,11 @@ class Settings(BaseSettings):
     provider_health_window_sec: int = 180
     provider_circuit_failures: int = 5
     provider_circuit_open_sec: int = 60
-    provider_weight_gemini: float = 0.7
-    provider_weight_groq: float = 0.3
+    provider_weight_gemini: float = 1.0
     provider_prefer_configured_only: bool = True
     provider_daily_budget_usd: float = 12.0
     provider_per_job_max_usd: float = 0.20
     provider_cost_estimate_gemini_usd: float = 0.03
-    provider_cost_estimate_groq_usd: float = 0.015
     provider_queue_tier_scribe: str = "balanced"  # low|balanced|high
     provider_queue_tier_quality: str = "high"
     provider_queue_tier_simulator: str = "balanced"

@@ -67,11 +67,10 @@ Transform raw content into a polished Echorouk-style article.
 ### Pipeline
 
 1. Only processes articles with status `APPROVED` (cost optimization)
-2. Call Groq (Llama 3.1 70B) for fast rewriting
-3. If Groq fails → fallback to Gemini Flash
+2. Call Gemini Flash for fast rewriting
 4. Output: headline, body_html, seo_title, seo_description, tags
 
-### Cost: ~$0.01 per article (Groq free tier covers most)
+### Cost: ~$0.01 per article
 
 ---
 

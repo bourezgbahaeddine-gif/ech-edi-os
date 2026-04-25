@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
+import asyncio
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -318,22 +319,31 @@ class PublishedContentMonitorAgent:
 
         connector = aiohttp.TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector, headers={"User-Agent": "EchoroukSwarm/1.0"}) as session:
-            for idx, entry in enumerate(unique_entries):
-                title = (entry.get("title") or "").strip()
-                summary = self._strip_html(entry.get("summary") or entry.get("description") or "")
-                url = (entry.get("link") or "").strip()
-                published_at = entry.get("published", "") or entry.get("updated", "")
-                body_text = await self._fetch_article_text(session, url, timeout_total=timeout_total)
-                audits.append(
-                    await self._audit_entry(
-                        title=title,
-                        summary=summary,
-                        body_text=body_text,
-                        url=url,
-                        published_at=published_at,
-                        use_llm=(idx < max(0, settings.published_monitor_llm_items_limit)),
-                    )
-                )
+            # تقليل العدد المتزامن لضمان استقرار الـ API تحت الضغط
+            semaphore = asyncio.Semaphore(settings.published_monitor_max_concurrent_tasks or 2)
+
+            async def process_item(idx, entry):
+                async with semaphore:
+                    title = (entry.get("title") or "").strip()
+                    summary = self._strip_html(entry.get("summary") or entry.get("description") or "")
+                    url = (entry.get("link") or "").strip()
+                    published_at = entry.get("published", "") or entry.get("updated", "")
+                    body_text = await self._fetch_article_text(session, url, timeout_total=timeout_total)
+                    
+                    # يفضل استخدام Exponential Backoff داخل ai_service.generate_text
+                    # بدلاً من الـ sleep الثابت هنا
+                        
+                    return await self._audit_entry(
+                            title=title,
+                            summary=summary,
+                            body_text=body_text,
+                            url=url,
+                            published_at=published_at,
+                            use_llm=(idx < max(0, settings.published_monitor_llm_items_limit)),
+                        )
+
+            tasks = [process_item(i, entry) for i, entry in enumerate(unique_entries)]
+            audits = await asyncio.gather(*tasks)
 
         avg_score = round(sum(item["score"] for item in audits) / max(1, len(audits)), 2)
         weak_items = [item for item in audits if item["score"] < settings.published_monitor_alert_threshold]

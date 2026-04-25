@@ -598,8 +598,6 @@ class EchoroukArchiveService:
         article.body_html = _paragraphs_to_html(payload.content)
         article.category = payload.category or article.category
         article.updated_at = datetime.utcnow()
-        if article.status in {None, NewsStatus.ARCHIVED}:
-            article.status = NewsStatus.ARCHIVED
 
         await db.flush()
         await article_index_service.upsert_article(

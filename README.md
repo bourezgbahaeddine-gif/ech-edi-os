@@ -25,7 +25,7 @@
 
 | Principle | Implementation |
 |-----------|---------------|
-| **Cost-Efficiency** | Gemini Flash for bulk tasks, Groq for speed, Pro only when needed |
+| **Cost-Efficiency** | Gemini Flash for bulk tasks, Pro only when needed |
 | **Zero Trust** | All inputs sanitized, no hardcoded secrets, environment-based config |
 | **Idempotency** | Triple deduplication: SHA1 hash → Redis cache → Levenshtein fuzzy |
 | **Human-in-the-Loop** | Editorial review for every candidate before generation |
@@ -76,7 +76,7 @@ RSS Sources (300+)
 |-------|------|----------|------|
 | 🔍 **Scout** (الكشّاف) | RSS ingestion, deduplication | None (pure Python) | $0 |
 | 🧭 **Router** (الموجّه) | Classification, urgency, routing | Gemini Flash (when needed) | ~$0.002/article |
-| ✍️ **Scribe** (الكاتب) | Article generation, SEO | Groq → Gemini Flash | ~$0.01/article |
+| ✍️ **Scribe** (الكاتب) | Article generation, SEO | Gemini Flash | ~$0.01/article |
 | 📡 **Trend Radar** (رادار التراند) | Cross-platform trend detection | Gemini Flash | ~$0.005/scan |
 | 🎙️ **Audio** (المذيع الآلي) | TTS audio news briefings | Edge-TTS (free) + Gemini | ~$0.001/briefing |
 
@@ -149,7 +149,6 @@ Recommended read order:
 
 - Docker & Docker Compose
 - A **Gemini API Key** ([Get one free](https://makersuite.google.com/app/apikey))
-- (Optional) A **Groq API Key** ([Get one free](https://console.groq.com/keys))
 
 ### 1. Clone & Configure
 
@@ -296,7 +295,7 @@ All configuration is done through environment variables. See [`.env.example`](.e
 
 | Group | Variables | Description |
 |-------|-----------|-------------|
-| **AI** | `GEMINI_API_KEY`, `GROQ_API_KEY` | AI service credentials |
+| **AI** | `GEMINI_API_KEY` | AI service credentials |
 | **Database** | `POSTGRES_*` | PostgreSQL connection |
 | **Cache** | `REDIS_*` | Redis connection |
 | **Notifications** | `TELEGRAM_BOT_TOKEN`, `SLACK_WEBHOOK_URL` | Alert channels |
@@ -327,7 +326,7 @@ pytest tests/test_utils.py -v
 | Operation | Model | Cost per Unit | Daily Estimate (500 articles) |
 |-----------|-------|---------------|-------------------------------|
 | Classification | Gemini Flash | ~$0.002 | ~$0.50 |
-| Article Writing | Groq (free tier) | $0.00 | $0.00 |
+| Article Writing | Gemini Flash | ~$0.01 | ~$0.01 |
 | Trend Analysis | Gemini Flash | ~$0.005 | ~$0.48 |
 | Audio Briefing | Edge-TTS | $0.00 | $0.00 |
 | **Total** | | | **~$1/day** |

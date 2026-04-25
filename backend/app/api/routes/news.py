@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, select, func, desc, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.auth import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import (
@@ -192,6 +193,7 @@ async def list_articles(
     search: Optional[str] = None,
     sort_by: str = Query("created_at", regex="^(created_at|crawled_at|importance_score|published_at)$"),
     local_first: bool = Query(True),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List articles with filtering and pagination."""
@@ -272,6 +274,7 @@ async def list_articles(
 @router.get("/breaking/latest")
 async def get_breaking_news(
     limit: int = Query(5, ge=1, le=20),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get actionable breaking news for dashboard newsroom workflow."""
@@ -297,6 +300,7 @@ async def get_breaking_news(
 @router.get("/candidates/pending")
 async def get_pending_candidates(
     limit: int = Query(20, ge=1, le=100),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get articles pending editorial review."""
@@ -328,6 +332,7 @@ async def get_pending_candidates(
 @router.get("/insights")
 async def news_insights(
     article_ids: list[int] = Query(default=[]),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -389,6 +394,7 @@ async def semantic_search(
     mode: str = Query("editorial", pattern="^(editorial|semantic)$"),
     include_aggregators: bool = Query(False),
     strict_tokens: bool = Query(True),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -7,15 +7,17 @@ import { useRouter } from 'next/navigation';
 import { isAxiosError } from 'axios';
 import {
     editorialApi,
+    eventsApi,
     memoryApi,
     newsApi,
     type ArticleBrief,
     type ChiefPendingItem,
+    type EventActionItem,
     type SocialApprovedItem,
 } from '@/lib/api';
 import { formatRelativeTime, getCategoryLabel, truncate } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
-import { AlertTriangle, CheckCircle2, RotateCcw, Send, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, RotateCcw, Send, ShieldCheck } from 'lucide-react';
 import { WorkflowCard } from '@/components/workflow/WorkflowCard';
 import { WorkflowHelpPanel } from '@/components/workflow/WorkflowHelpPanel';
 import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay';
@@ -24,6 +26,7 @@ import { MemoryQuickCaptureModal } from '@/components/memory/MemoryQuickCaptureM
 import { ActionDialog } from '@/components/ui/ActionDialog';
 import { getWorkflowStatusLabel } from '@/lib/workflow-language';
 import { trackNextAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
+import { EmptyState, InsightCard, PageHeader, StatusBadge } from '@/components/ux/SurfacePrimitives';
 
 type EditorialTabKey = 'pending' | 'returned' | 'reservations' | 'manual';
 type PendingChiefDecision = {
@@ -78,10 +81,6 @@ function getChiefReason(item: ChiefPendingItem): string {
     if (status === 'approval_request_with_reservations') return 'ظهرت لك لأن وكيل السياسة اعتمد المادة بتحفظات وتنتظر قرارك النهائي.';
     if (item.is_breaking) return 'ظهرت لك لأنها مادة عاجلة وصلت إلى بوابة الاعتماد النهائي.';
     return 'ظهرت لك لأنها جاهزة لقرار رئيس التحرير قبل السماح بالنشر اليدوي.';
-}
-
-function EmptyState({ message }: { message: string }) {
-    return <div className="rounded-2xl border border-white/10 bg-gray-900/50 p-6 text-center text-gray-400">{message}</div>;
 }
 
 function QueueTabButton({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
@@ -187,6 +186,20 @@ export default function EditorialPage() {
         refetchInterval: 30000,
     });
 
+    const chiefEventsOverviewQuery = useQuery({
+        queryKey: ['editorial-events-overview'],
+        queryFn: async () => (await eventsApi.overview({ window_days: 7 })).data,
+        enabled: isChief,
+        refetchInterval: 60_000,
+    });
+
+    const chiefEventActionsQuery = useQuery({
+        queryKey: ['editorial-events-actions'],
+        queryFn: async () => (await eventsApi.actionItems({ limit: 6 })).data,
+        enabled: isChief,
+        refetchInterval: 60_000,
+    });
+
     const quickCaptureMutation = useMutation({
         mutationFn: (payload: {
             memory_type: 'operational' | 'knowledge' | 'session';
@@ -287,6 +300,16 @@ export default function EditorialPage() {
 
     const chiefPendingItems = useMemo(() => chiefItems.filter((item) => normalizeStatus(item.status) !== 'approval_request_with_reservations'), [chiefItems]);
     const chiefReservationItems = useMemo(() => chiefItems.filter((item) => normalizeStatus(item.status) === 'approval_request_with_reservations'), [chiefItems]);
+    const chiefEventActions = useMemo(() => ((chiefEventActionsQuery.data?.items || []) as EventActionItem[]).slice(0, 4), [chiefEventActionsQuery.data?.items]);
+    const chiefSummaryBadges = useMemo(() => {
+        if (!isChief) return [];
+        const items: Array<{ label: string; tone: 'info' | 'warn' | 'danger' | 'success' }> = [];
+        if (chiefPendingItems.length > 0) items.push({ label: `اعتمادات بانتظارك: ${chiefPendingItems.length}`, tone: 'info' });
+        if (chiefReservationItems.length > 0) items.push({ label: `تحفظات معلقة: ${chiefReservationItems.length}`, tone: 'warn' });
+        if (readyForManualItems.length > 0) items.push({ label: `جاهز للنشر اليدوي: ${readyForManualItems.length}`, tone: 'success' });
+        if ((chiefEventsOverviewQuery.data?.overdue || 0) > 0) items.push({ label: `أحداث متأخرة: ${chiefEventsOverviewQuery.data?.overdue || 0}`, tone: 'danger' });
+        return items;
+    }, [chiefEventActionsQuery.data, chiefEventsOverviewQuery.data?.overdue, chiefPendingItems.length, chiefReservationItems.length, isChief, readyForManualItems.length]);
 
     const tutorialRole = tutorialState.role;
     const tutorialStep = tutorialState.step;
@@ -511,20 +534,20 @@ export default function EditorialPage() {
     const renderActiveTab = () => {
         if (isChief) {
             if (activeTab === 'pending') {
-                if (chiefQueueQuery.isLoading) return <EmptyState message="جاري تحميل طابور الاعتماد..." />;
-                if (!chiefPendingItems.length) return <EmptyState message="لا توجد مواد بانتظار اعتماد رئيس التحرير الآن." />;
+                if (chiefQueueQuery.isLoading) return <EmptyState title="جاري تحميل طابور الاعتماد..." />;
+                if (!chiefPendingItems.length) return <EmptyState title="لا توجد مواد بانتظار اعتماد رئيس التحرير الآن." />;
                 return <div className="space-y-3">{chiefPendingItems.map(renderChiefCard)}</div>;
             }
 
             if (activeTab === 'reservations') {
-                if (chiefQueueQuery.isLoading) return <EmptyState message="جاري تحميل المواد ذات التحفظات..." />;
-                if (!chiefReservationItems.length) return <EmptyState message="لا توجد مواد معلقة بتحفظات الآن." />;
+                if (chiefQueueQuery.isLoading) return <EmptyState title="جاري تحميل المواد ذات التحفظات..." />;
+                if (!chiefReservationItems.length) return <EmptyState title="لا توجد مواد معلقة بتحفظات الآن." />;
                 return <div className="space-y-3">{chiefReservationItems.map(renderChiefCard)}</div>;
             }
 
             if (activeTab === 'returned') {
-                if (draftGeneratedQuery.isLoading) return <EmptyState message="جاري تحميل المواد العائدة للمراجعة..." />;
-                if (!draftGeneratedItems.length) return <EmptyState message="لا توجد مواد في مسار المراجعة الآن." />;
+                if (draftGeneratedQuery.isLoading) return <EmptyState title="جاري تحميل المواد العائدة للمراجعة..." />;
+                if (!draftGeneratedItems.length) return <EmptyState title="لا توجد مواد في مسار المراجعة الآن." />;
                 return (
                     <div className="space-y-3">
                         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100" dir="rtl">هذه المواد عادت إلى مسار التحرير وهي تحت المتابعة قبل أن تعود إلى الاعتماد.</div>
@@ -533,31 +556,31 @@ export default function EditorialPage() {
                 );
             }
 
-            if (readyForManualQuery.isLoading) return <EmptyState message="جاري تحميل المواد الجاهزة للنشر اليدوي..." />;
-            if (!readyForManualItems.length) return <EmptyState message="لا توجد مواد جاهزة للنشر اليدوي الآن." />;
+            if (readyForManualQuery.isLoading) return <EmptyState title="جاري تحميل المواد الجاهزة للنشر اليدوي..." />;
+            if (!readyForManualItems.length) return <EmptyState title="لا توجد مواد جاهزة للنشر اليدوي الآن." />;
             return <div className="space-y-3">{readyForManualItems.map((item) => renderArticleCard(item))}</div>;
         }
 
         if (activeTab === 'pending') {
-            if (pendingCandidatesQuery.isLoading) return <EmptyState message="جاري تحميل المواد التي وصلت إلى نطاقك..." />;
-            if (!pendingCandidates.length) return <EmptyState message="لا توجد مواد جديدة بانتظارك الآن." />;
+            if (pendingCandidatesQuery.isLoading) return <EmptyState title="جاري تحميل المواد التي وصلت إلى نطاقك..." />;
+            if (!pendingCandidates.length) return <EmptyState title="لا توجد مواد جديدة بانتظارك الآن." />;
             return <div className="space-y-3">{pendingCandidates.map((item) => renderArticleCard(item, { nomination: true }))}</div>;
         }
 
         if (activeTab === 'returned') {
-            if (draftGeneratedQuery.isLoading) return <EmptyState message="جاري تحميل المواد العائدة للمراجعة..." />;
-            if (!draftGeneratedItems.length) return <EmptyState message="لا توجد مواد عائدة للمراجعة الآن." />;
+            if (draftGeneratedQuery.isLoading) return <EmptyState title="جاري تحميل المواد العائدة للمراجعة..." />;
+            if (!draftGeneratedItems.length) return <EmptyState title="لا توجد مواد عائدة للمراجعة الآن." />;
             return <div className="space-y-3">{draftGeneratedItems.map((item) => renderArticleCard(item))}</div>;
         }
 
         if (activeTab === 'reservations') {
-            if (reservationsQuery.isLoading) return <EmptyState message="جاري تحميل المواد ذات التحفظات..." />;
-            if (!reservationsItems.length) return <EmptyState message="لا توجد مواد بتحفظات الآن." />;
+            if (reservationsQuery.isLoading) return <EmptyState title="جاري تحميل المواد ذات التحفظات..." />;
+            if (!reservationsItems.length) return <EmptyState title="لا توجد مواد بتحفظات الآن." />;
             return <div className="space-y-3">{reservationsItems.map((item) => renderArticleCard(item))}</div>;
         }
 
         if (readyForManualQuery.isLoading || (isSocial && socialFeedQuery.isLoading)) {
-            return <EmptyState message="جاري تحميل المواد الجاهزة للنشر اليدوي..." />;
+            return <EmptyState title="جاري تحميل المواد الجاهزة للنشر اليدوي..." />;
         }
 
         if (isSocial && socialItems.length > 0) {
@@ -565,7 +588,7 @@ export default function EditorialPage() {
         }
 
         if (!readyForManualItems.length) {
-            return <EmptyState message="لا توجد مواد جاهزة للنشر اليدوي الآن." />;
+            return <EmptyState title="لا توجد مواد جاهزة للنشر اليدوي الآن." />;
         }
 
         return <div className="space-y-3">{readyForManualItems.map((item) => renderArticleCard(item, { socialCopy: isSocial }))}</div>;
@@ -583,19 +606,75 @@ export default function EditorialPage() {
                 onPrimary={handleChiefNext}
                 onSkip={completeTutorial}
             />
-            <div>
-                <h1 className="text-2xl font-bold text-white">الاعتماد والمراجعة</h1>
-                <p className="mt-1 text-sm text-gray-400">
-                    {isChief
-                        ? 'هذه الصفحة أصبحت طابور قرار واضح: ماذا ينتظر اعتمادك، ما عاد للمراجعة، وما أصبح جاهزًا للنشر اليدوي.'
+            <PageHeader
+                eyebrow={isChief ? 'غرفة تشغيل رئيس التحرير' : isSocial ? 'نشر واعتماد' : 'اعتماد ومراجعة'}
+                title="الاعتماد والمراجعة"
+                icon={isChief ? ShieldCheck : CheckCircle2}
+                description={
+                    isChief
+                        ? 'هذه ليست تجربة صحفي مع روابط إضافية. هذه غرفة تشغيل لرئيس التحرير: طابور اعتماد، مخاطر مسار، مواعيد قريبة، ومواد جاهزة للحسم أو النشر اليدوي.'
                         : isSocial
-                            ? 'هذه الصفحة تجمع لك المواد التي دخلت مسار التحرير، ما عاد للمراجعة، وما أصبح جاهزًا للنشر أو النسخ الرقمية.'
-                            : 'هذه الصفحة تجمع لك ما دخل نطاقك الآن، ما عاد للمراجعة، وما يحتاج الإرسال أو الاستكمال قبل الاعتماد.'}
-                </p>
-            </div>
+                          ? 'هذه الصفحة تجمع المواد التي دخلت مسار التحرير وما أصبح جاهزًا للاستخدام الرقمي أو النسخ السريعة.'
+                          : 'هذه الصفحة تجمع ما دخل نطاقك الآن، ما عاد للمراجعة، وما يحتاج الإرسال أو الاستكمال قبل الاعتماد.'
+                }
+                meta={chiefSummaryBadges.map((item) => (
+                    <StatusBadge key={item.label} tone={item.tone}>
+                        {item.label}
+                    </StatusBadge>
+                ))}
+                actions={
+                    isChief ? (
+                        <a href="/today" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:text-white">
+                            فتح اليوم
+                        </a>
+                    ) : undefined
+                }
+            />
 
             {errorMessage && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{errorMessage}</div>}
             {successMessage && <div className="whitespace-pre-wrap rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{successMessage}</div>}
+
+            {isChief && (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+                    <InsightCard title="بانتظار الاعتماد" value={chiefPendingItems.length} hint="مواد تحتاج قرارًا نهائيًا الآن." tone={chiefPendingItems.length > 0 ? 'info' : 'default'} />
+                    <InsightCard title="تحفظات المسار" value={chiefReservationItems.length} hint="مواد تحتاج حسم تحفظاتها قبل الإقفال." tone={chiefReservationItems.length > 0 ? 'warn' : 'default'} />
+                    <InsightCard title="جاهز للنشر اليدوي" value={readyForManualItems.length} hint="مواد اجتازت الاعتماد ويمكن تسليمها." tone={readyForManualItems.length > 0 ? 'success' : 'default'} />
+                    <InsightCard title="أحداث قريبة أو متأخرة" value={(chiefEventsOverviewQuery.data?.upcoming_24h || 0) + (chiefEventsOverviewQuery.data?.overdue || 0)} hint="مؤشر الجدول التحريري الذي يحتاج انتباهًا." tone={(chiefEventsOverviewQuery.data?.overdue || 0) > 0 ? 'danger' : 'warn'} />
+                </div>
+            )}
+
+            {isChief && chiefEventActions.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4" dir="rtl">
+                    <div className="flex items-start gap-3">
+                        <CalendarClock className="mt-0.5 h-4 w-4 text-cyan-300" />
+                        <div className="text-xs text-gray-300">
+                            <p className="font-semibold text-white">جدول ومخاطر اليوم</p>
+                            <p className="mt-1 text-gray-400">هذه العناصر قادمة من مكتب الأحداث حتى لا ينفصل الاعتماد عن الجدول اليومي.</p>
+                        </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        {chiefEventActions.map((item) => (
+                            <div key={`${item.code}-${item.event.id}`} className={`rounded-xl border px-3 py-3 ${String(item.severity) === 'high' ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-white">{item.title}</p>
+                                        <p className="mt-1 text-xs text-slate-300">{item.event.title}</p>
+                                        <p className="mt-2 text-[11px] leading-6 text-slate-400">{item.recommendation}</p>
+                                    </div>
+                                    <StatusBadge tone={String(item.severity) === 'high' ? 'danger' : 'warn'}>
+                                        {String(item.severity) === 'high' ? 'حرج' : 'قريب'}
+                                    </StatusBadge>
+                                </div>
+                                <div className="mt-3">
+                                    <a href="/events" className="inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:text-white">
+                                        {item.action || 'فتح مكتب الأحداث'}
+                                    </a>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
                 {tabs.map((tab) => (

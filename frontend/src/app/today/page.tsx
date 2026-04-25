@@ -4,26 +4,31 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, Inbox, LayoutDashboard, RefreshCw, Send, AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Inbox, RefreshCw, Send, ShieldAlert, Zap } from 'lucide-react';
 
 import {
     dashboardApi,
     editorialApi,
+    eventsApi,
+    milApi,
     newsApi,
     type ArticleBrief,
     type ChiefPendingItem,
     type DashboardNotification,
+    type EventActionItem,
+    type MILTodayFullResponse,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/utils';
-import { WorkflowCard, WorkflowSection, type WorkflowTone } from '@/components/workflow/WorkflowCard';
-import { WorkflowHelpPanel } from '@/components/workflow/WorkflowHelpPanel';
+import { type WorkflowTone } from '@/components/workflow/WorkflowCard';
+import { NextActionBar } from '@/components/workflow/NextActionBar';
 import { getWorkflowStatusLabel } from '@/lib/workflow-language';
 import { RoleOnboardingBanner } from '@/components/workflow/RoleOnboardingBanner';
-import { trackNextAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
+import { trackMetricEvent, trackNextAction, useTrackFirstAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
 import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay';
 import { TutorialWelcomeModal } from '@/components/onboarding/TutorialWelcomeModal';
 import { useTutorialState } from '@/lib/tutorial';
+import { ActionCard, EmptyState, PageHeader, SectionHeader, StatusBadge } from '@/components/ux/SurfacePrimitives';
+import { classifyNotificationInterruption, filterNotificationsForRole } from '@/lib/notification-policy';
 
 type Role =
     | 'director'
@@ -45,13 +50,6 @@ type QueueItem = {
     status: string;
     timestamp?: string | null;
     blockers?: string[];
-    tone?: WorkflowTone;
-};
-
-type SummaryCardData = {
-    label: string;
-    value: number;
-    hint: string;
     tone?: WorkflowTone;
 };
 
@@ -163,45 +161,6 @@ function notificationToQueueItem(item: DashboardNotification): QueueItem {
     };
 }
 
-function SummaryCard({ label, value, hint, tone = 'default' }: SummaryCardData) {
-    const toneClasses =
-        tone === 'danger'
-            ? 'border-rose-500/30 bg-rose-500/10 text-rose-100'
-            : tone === 'warn'
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-              : tone === 'success'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
-                : 'border-white/10 bg-white/5 text-white';
-
-    return (
-        <div className={cn('rounded-2xl border p-4', toneClasses)}>
-            <div className="text-xs opacity-80">{label}</div>
-            <div className="mt-2 text-3xl font-bold">{value}</div>
-            <div className="mt-2 text-xs opacity-80">{hint}</div>
-        </div>
-    );
-}
-
-function WorkflowStrip({ items }: { items: Array<{ label: string; count: number; hint: string }> }) {
-    return (
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-center gap-2 text-white mb-3">
-                <LayoutDashboard className="w-4 h-4 text-cyan-300" />
-                <h2 className="text-sm font-semibold">المسار الحالي</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {items.map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                        <div className="text-xs text-slate-400">{item.label}</div>
-                        <div className="mt-2 text-2xl font-semibold text-white">{item.count}</div>
-                        <div className="mt-2 text-xs text-slate-400 leading-6">{item.hint}</div>
-                    </div>
-                ))}
-            </div>
-        </section>
-    );
-}
-
 export default function TodayPage() {
     const { user } = useAuth();
     const router = useRouter();
@@ -218,6 +177,7 @@ export default function TodayPage() {
     );
 
     useTrackSurfaceView('today', surfaceDetails);
+    const trackFirstAction = useTrackFirstAction('today', surfaceDetails);
 
     const pendingCandidatesQuery = useQuery({
         queryKey: ['today-pending-candidates'],
@@ -268,13 +228,48 @@ export default function TodayPage() {
         refetchInterval: 20_000,
     });
 
+    const eventOverviewQuery = useQuery({
+        queryKey: ['today-events-overview'],
+        queryFn: async () => (await eventsApi.overview({ window_days: 7 })).data,
+        enabled: role !== 'observer',
+        refetchInterval: 60_000,
+    });
+
+    const eventRemindersQuery = useQuery({
+        queryKey: ['today-events-reminders'],
+        queryFn: async () => (await eventsApi.reminders({ limit: 8 })).data,
+        enabled: role !== 'observer',
+        refetchInterval: 60_000,
+    });
+
+    const eventActionsQuery = useQuery({
+        queryKey: ['today-events-actions'],
+        queryFn: async () => (await eventsApi.actionItems({ limit: 8 })).data,
+        enabled: role !== 'observer',
+        refetchInterval: 60_000,
+    });
+
+    const milTodayQuery = useQuery({
+        queryKey: ['today-mil-full'],
+        queryFn: async () => (await milApi.todayFull({ limit_per_section: 3 })).data,
+        enabled: role !== 'observer',
+        refetchInterval: 60_000,
+    });
+
     const pendingCandidates = useMemo(() => pendingCandidatesQuery.data || [], [pendingCandidatesQuery.data]);
     const draftGenerated = useMemo(() => draftGeneratedQuery.data || [], [draftGeneratedQuery.data]);
     const reservations = useMemo(() => reservationsQuery.data || [], [reservationsQuery.data]);
     const readyManualPublish = useMemo(() => readyManualPublishQuery.data || [], [readyManualPublishQuery.data]);
     const chiefPending = useMemo(() => chiefPendingQuery.data || [], [chiefPendingQuery.data]);
     const breaking = useMemo(() => breakingQuery.data || [], [breakingQuery.data]);
-    const notifications = useMemo(() => notificationsQuery.data || [], [notificationsQuery.data]);
+    const notifications = useMemo(
+        () => filterNotificationsForRole((notificationsQuery.data || []) as DashboardNotification[], role || 'guest'),
+        [notificationsQuery.data, role],
+    );
+    const milToday = useMemo<MILTodayFullResponse | null>(() => milTodayQuery.data || null, [milTodayQuery.data]);
+    const eventsOverview = eventOverviewQuery.data || null;
+    const eventReminders = eventRemindersQuery.data || null;
+    const eventActions = eventActionsQuery.data || null;
 
     const journalistNow = useMemo(() => {
         const returned = reservations.slice(0, 3).map((article) =>
@@ -398,98 +393,91 @@ export default function TodayPage() {
         return [...staleApprovals, ...criticalNotifications].slice(0, 4);
     }, [chiefPending, notifications]);
 
-    const summaryCards = useMemo<SummaryCardData[]>(() => {
-        if (isChiefFlow) {
-            const overdue = chiefPending.filter((item) => ageInHours(item.updated_at) >= 2).length;
-            return [
-                {
-                    label: 'بانتظارك',
-                    value: chiefPending.length,
-                    hint: 'مواد دخلت مرحلة قرار رئيس التحرير.',
-                },
-                {
-                    label: 'متأخر',
-                    value: overdue,
-                    hint: 'مواد تحتاج حسمًا سريعًا حتى لا يتعطل المسار.',
-                    tone: overdue > 0 ? 'danger' : 'default',
-                },
-                {
-                    label: 'جاهز اليوم',
-                    value: readyManualPublish.length,
-                    hint: 'مواد جاهزة للنشر اليدوي بعد الاعتماد.',
-                    tone: readyManualPublish.length > 0 ? 'success' : 'default',
-                },
-            ];
-        }
-
-        return [
-            {
-                label: 'جديد لك',
-                value: pendingCandidates.length,
-                hint: 'مواد دخلت طابور الأخبار وتحتاج بدء العمل.',
-            },
-            {
-                label: 'قيد الكتابة',
-                value: draftGenerated.length,
-                hint: 'مواد في draft_generated وتحتاج استكمالًا أو إرسالًا للاعتماد.',
-                tone: draftGenerated.length > 6 ? 'warn' : 'default',
-            },
-            {
-                label: 'عاد للمراجعة',
-                value: reservations.length,
-                hint: 'مواد رجعت بتحفظات أو ملاحظات.',
-                tone: reservations.length > 0 ? 'warn' : 'default',
-            },
-        ];
-    }, [draftGenerated.length, isChiefFlow, pendingCandidates.length, chiefPending, readyManualPublish.length, reservations.length]);
-
-    const workflowItems = useMemo(() => {
-        if (isChiefFlow) {
-            return [
-                {
-                    label: 'بانتظار الاعتماد',
-                    count: chiefPending.length,
-                    hint: 'المواد التي دخلت نطاق قرار رئيس التحرير الآن.',
-                },
-                {
-                    label: 'بتحفظات',
-                    count: reservations.length,
-                    hint: 'مواد تحتاج متابعة بعد قرار بتحفظات.',
-                },
-                {
-                    label: 'جاهز للنشر اليدوي',
-                    count: readyManualPublish.length,
-                    hint: 'مواد اجتازت الاعتماد ويمكن تسليمها للنشر.',
-                },
-            ];
-        }
-
-        return [
-            {
-                label: 'مرشّح جديد',
-                count: pendingCandidates.length,
-                hint: 'مواد دخلت الأخبار وتنتظر بدء العمل.',
-            },
-            {
-                label: 'draft_generated',
-                count: draftGenerated.length,
-                hint: 'مواد داخل التحرير وتحتاج استكمالًا أو فحصًا سريعًا.',
-            },
-            {
-                label: 'عاد بتحفظات',
-                count: reservations.length,
-                hint: 'مواد رجعت من الاعتماد وتحتاج تعديلًا قبل إعادة الإرسال.',
-            },
-        ];
-    }, [draftGenerated.length, isChiefFlow, pendingCandidates.length, chiefPending.length, readyManualPublish.length, reservations.length]);
-
     const tutorialRole = tutorialState.role;
     const tutorialStep = tutorialState.step;
     const journalistFirst = journalistNow[0] || journalistNext[0];
     const chiefFirst = chiefNow[0] || chiefNext[0];
+    const recommendedAction = isChiefFlow ? chiefFirst || chiefRisk[0] : journalistFirst || journalistRisk[0];
     const showWelcome = tutorialActive && !tutorialRole;
     const showJournalistOverlay = tutorialActive && tutorialRole === 'journalist' && tutorialStep === 'today_open';
     const showChiefOverlay = tutorialActive && tutorialRole === 'editor_chief' && tutorialStep === 'chief_today';
+    const nowItems = isChiefFlow ? chiefNow : journalistNow;
+    const nextItems = isChiefFlow ? chiefNext : journalistNext;
+    const riskItems = isChiefFlow ? chiefRisk : journalistRisk;
+
+    const urgentItems = useMemo(() => {
+        const criticalNotifications = notifications
+            .filter((item) => classifyNotificationInterruption(item, role || 'guest') === 'interrupt_now')
+            .slice(0, 2)
+            .map(notificationToQueueItem);
+
+        const urgentEventActions = ((eventActions?.items || []) as EventActionItem[])
+            .filter((item) => String(item.severity).toLowerCase() === 'high')
+            .slice(0, 2)
+            .map((item) => ({
+                id: `event-action-${item.code}-${item.event.id}`,
+                title: item.title,
+                subtitle: item.event.title,
+                workflowLabel: 'حدث يحتاج تحركًا عاجلًا',
+                reason: item.recommendation,
+                nextAction: item.action || 'افتح مكتب الأحداث',
+                href: '/events',
+                status: item.severity,
+                timestamp: item.event.starts_at,
+                tone: 'danger' as WorkflowTone,
+            }));
+
+        const criticalMil = (milToday?.critical_now.items || []).slice(0, 2).map((item) => ({
+            id: `mil-${item.signal_id}`,
+            title: item.title,
+            subtitle: `MIL · ${Math.round(item.confidence_score * 100)}٪`,
+            workflowLabel: 'إشارة استخبارية حرجة',
+            reason: item.why_it_matters,
+            nextAction: item.recommended_action,
+            href: item.href || '/stories',
+            status: item.priority,
+            timestamp: item.created_at,
+            tone: 'danger' as WorkflowTone,
+        }));
+
+        return [...criticalNotifications, ...urgentEventActions, ...criticalMil].slice(0, 6);
+    }, [eventActions?.items, milToday?.critical_now.items, notifications, role]);
+
+    const eventSummaryItems = useMemo(() => {
+        const items = [];
+        if ((eventReminders?.t6 || []).length > 0) {
+            items.push({
+                label: 'خلال 6 ساعات',
+                value: eventReminders?.t6.length || 0,
+                tone: 'warn' as const,
+            });
+        }
+        if ((eventReminders?.t24 || []).length > 0) {
+            items.push({
+                label: 'خلال 24 ساعة',
+                value: eventReminders?.t24.length || 0,
+                tone: 'info' as const,
+            });
+        }
+        if ((eventsOverview?.overdue || 0) > 0) {
+            items.push({
+                label: 'متأخر ويحتاج تغطية',
+                value: eventsOverview?.overdue || 0,
+                tone: 'danger' as const,
+            });
+        }
+        return items;
+    }, [eventReminders?.t24, eventReminders?.t6, eventsOverview?.overdue]);
+
+    const headerMeta = useMemo(() => {
+        const items: Array<{ label: string; tone: 'info' | 'warn' | 'danger' | 'success' }> = [];
+        if (isChiefFlow && chiefPending.length > 0) items.push({ label: `مواد بانتظار القرار: ${chiefPending.length}`, tone: 'info' });
+        if (!isChiefFlow && pendingCandidates.length > 0) items.push({ label: `مواد جديدة لك: ${pendingCandidates.length}`, tone: 'info' });
+        if (reservations.length > 0) items.push({ label: `تحفظات تحتاج متابعة: ${reservations.length}`, tone: 'warn' });
+        if ((eventReminders?.t24 || []).length > 0) items.push({ label: `أحداث قريبة: ${eventReminders?.t24.length}`, tone: 'warn' });
+        if (riskItems.length > 0) items.push({ label: `عناصر معرضة للتعطل: ${riskItems.length}`, tone: 'danger' });
+        return items;
+    }, [chiefPending.length, eventReminders?.t24, isChiefFlow, pendingCandidates.length, reservations.length, riskItems.length]);
 
     const handleTutorialStart = (selectedRole: 'journalist' | 'editor_chief', pace: 'full' | 'quick') => {
         updateTutorial({
@@ -526,7 +514,7 @@ export default function TodayPage() {
                     router.push(`/workspace-drafts?work_id=${workId}`);
                     return;
                 }
-            } catch (err) {
+            } catch {
                 // ignore and let user continue
             }
         }
@@ -545,7 +533,39 @@ export default function TodayPage() {
         readyManualPublishQuery.isLoading ||
         chiefPendingQuery.isLoading ||
         breakingQuery.isLoading ||
-        notificationsQuery.isLoading;
+        notificationsQuery.isLoading ||
+        eventOverviewQuery.isLoading ||
+        eventActionsQuery.isLoading ||
+        eventRemindersQuery.isLoading;
+
+    const renderQueueCard = (item: QueueItem, queueSection: 'now' | 'urgent' | 'next' | 'risk') => (
+        <ActionCard
+            key={item.id}
+            title={item.title}
+            description={item.subtitle}
+            reason={item.reason}
+            actionLabel={item.nextAction}
+            actionHref={item.href}
+            actionTone={item.tone === 'danger' ? 'danger' : item.tone === 'warn' ? 'warn' : item.tone === 'success' ? 'success' : 'info'}
+            onAction={() => {
+                trackFirstAction(item.nextAction, { queue_section: queueSection, item_id: item.id });
+                trackNextAction('today', item.nextAction, {
+                    ...surfaceDetails,
+                    queue_section: queueSection,
+                    item_id: item.id,
+                    workflow_label: item.workflowLabel,
+                    target_href: item.href,
+                });
+            }}
+            meta={
+                <>
+                    <StatusBadge tone={item.tone === 'danger' ? 'danger' : item.tone === 'warn' ? 'warn' : 'default'}>{item.workflowLabel}</StatusBadge>
+                    {item.blockers && item.blockers.length > 0 && <StatusBadge tone="warn">عائق: {item.blockers.length}</StatusBadge>}
+                    {item.timestamp && <StatusBadge tone="default">{new Date(item.timestamp).toLocaleDateString('ar-DZ')}</StatusBadge>}
+                </>
+            }
+        />
+    );
 
     const isQuickTour = tutorialState.pace === 'quick';
 
@@ -594,42 +614,62 @@ export default function TodayPage() {
                           ]
                 }
             />
+            {recommendedAction && (
+                <NextActionBar
+                    title={recommendedAction.nextAction}
+                    description={recommendedAction.reason}
+                    href={recommendedAction.href}
+                    actionLabel={recommendedAction.nextAction}
+                    tone={recommendedAction.tone}
+                    meta={[recommendedAction.workflowLabel, recommendedAction.subtitle].filter(Boolean)}
+                    onAction={() => {
+                        trackFirstAction(recommendedAction.nextAction, { queue_section: 'recommended', item_id: recommendedAction.id });
+                        trackNextAction('today', recommendedAction.nextAction, {
+                            ...surfaceDetails,
+                            queue_section: 'recommended',
+                            item_id: recommendedAction.id,
+                            workflow_label: recommendedAction.workflowLabel,
+                            target_href: recommendedAction.href,
+                        })
+                    }}
+                />
+            )}
 
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white inline-flex items-center gap-2">
-                        <LayoutDashboard className="w-6 h-6 text-cyan-300" />
-                        اليوم
-                    </h1>
-                    <p className="text-sm text-slate-400 mt-2 max-w-3xl leading-7">
-                        {isChiefFlow
-                            ? 'هذه الصفحة تعرض ما دخل نطاق قرارك الآن، ولماذا وصل إليك، وما الخطوة التالية داخل مسار الاعتماد والنشر اليدوي.'
-                            : 'هذه الصفحة تعرض ما دخل نطاق عملك الآن، ولماذا ظهر لك، وما الخطوة التالية داخل مسار الأخبار والتحرير.'}
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Link
-                        href={isChiefFlow ? '/editorial' : '/news'}
-                        data-tutorial={showChiefOverlay ? 'today-chief-queue' : undefined}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:text-white"
-                    >
-                        <Inbox className="w-4 h-4" />
-                        {isChiefFlow ? 'فتح طابور الاعتماد' : 'فتح طابور الأخبار'}
-                    </Link>
-                    <Link href="/workspace-drafts" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/20">
-                        <Send className="w-4 h-4" />
-                        فتح المسودات
-                    </Link>
-                </div>
-            </div>
-
-            <WorkflowStrip items={workflowItems} />
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {summaryCards.map((card) => (
-                    <SummaryCard key={card.label} {...card} />
+            <PageHeader
+                eyebrow={isChiefFlow ? 'قرار اليوم' : 'غرفة القرار اليومية'}
+                title="اليوم"
+                icon={Zap}
+                description={
+                    isChiefFlow
+                        ? 'هذه ليست لوحة مؤشرات عامة. هذه غرفة قرار رئيس التحرير: ما يحتاج حسمًا الآن، ما هو حرج، وما الإجراء التالي الآمن داخل مسار الاعتماد.'
+                        : 'هذه ليست جدار بيانات. هذه صفحة قرار يومية: ما الذي يجب أن تبدأ به الآن، ما الذي قد يعطل المسار، وما الإجراء التالي المقترح بأقل حمل ذهني.'
+                }
+                meta={headerMeta.map((item) => (
+                    <StatusBadge key={item.label} tone={item.tone}>
+                        {item.label}
+                    </StatusBadge>
                 ))}
-            </div>
+                actions={
+                    <>
+                        <Link
+                            href={isChiefFlow ? '/editorial' : '/news'}
+                            data-tutorial={showChiefOverlay ? 'today-chief-queue' : undefined}
+                            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:text-white"
+                        >
+                            <Inbox className="w-4 h-4" />
+                            {isChiefFlow ? 'فتح طابور الاعتماد' : 'فتح طابور الأخبار'}
+                        </Link>
+                        <Link href="/events" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:text-white">
+                            <CalendarClock className="w-4 h-4" />
+                            مكتب الأحداث
+                        </Link>
+                        <Link href="/workspace-drafts" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/20">
+                            <Send className="w-4 h-4" />
+                            فتح المسودات
+                        </Link>
+                    </>
+                }
+            />
 
             {isLoading ? (
                 <div className="rounded-3xl border border-white/10 bg-[rgba(15,23,42,0.55)] p-8 text-center text-slate-400">
@@ -637,151 +677,127 @@ export default function TodayPage() {
                     جاري تجهيز طابور اليوم...
                 </div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                    <WorkflowSection
-                        title={isChiefFlow ? 'دخل نطاقك الآن' : 'ابدأ الآن'}
-                        hint={isChiefFlow ? 'المواد التي تحتاج قرارًا مباشرًا من رئيس التحرير.' : 'أهم ما دخل نطاقك الآن ويحتاج بدء العمل أو تصحيحًا سريعًا.'}
-                        icon={<Zap className="w-4 h-4 text-cyan-300" />}
-                        count={(isChiefFlow ? chiefNow : journalistNow).length}
-                        emptyLabel={isChiefFlow ? 'لا توجد مواد حرجة بانتظار القرار الآن.' : 'لا توجد عناصر عاجلة الآن.'}
-                    >
-                        {(isChiefFlow ? chiefNow : journalistNow).length === 0 ? undefined : (
-                            <div className="space-y-3">
-                                {(isChiefFlow ? chiefNow : journalistNow).map((item, index) => (
-                                    <div
-                                        key={item.id}
-                                        data-tutorial={showJournalistOverlay && index === 0 ? 'today-first-card' : undefined}
-                                    >
-                                        <WorkflowCard
-                                            title={item.title}
-                                            subtitle={item.subtitle}
-                                            statusLabel={getWorkflowStatusLabel(item.status)}
-                                            chips={[{ label: item.workflowLabel }]}
-                                            reason={item.reason}
-                                            nextActionLabel={item.nextAction}
-                                            timestamp={item.timestamp}
-                                            blockers={item.blockers}
-                                            tone={item.tone}
-                                            primaryAction={{
-                                                label: item.nextAction,
-                                                href: item.href,
-                                                onClick: () =>
-                                                    trackNextAction('today', item.nextAction, {
-                                                        ...surfaceDetails,
-                                                        queue_section: 'now',
-                                                        item_id: item.id,
-                                                        workflow_label: item.workflowLabel,
-                                                        target_href: item.href,
-                                                    }),
-                                            }}
-                                        />
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                    <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
+                        <SectionHeader
+                            title="ما يجب أن تفعله الآن"
+                            description={isChiefFlow ? 'هذه هي المواد التي دخلت نطاق قرارك مباشرة.' : 'ابدأ من هذه المواد قبل أي تصفح إضافي.'}
+                            icon={Zap}
+                            count={nowItems.length || null}
+                        />
+                        <div className="mt-4 space-y-3">
+                            {nowItems.length === 0 ? (
+                                <EmptyState
+                                    title={isChiefFlow ? 'لا توجد مواد تحتاج قرارًا مباشرًا الآن.' : 'لا توجد مهام عاجلة للبدء الآن.'}
+                                    description="إذا ظهر عنصر جديد سيظهر هنا أولًا بدل التشتت بين القوائم."
+                                />
+                            ) : (
+                                nowItems.map((item, index) => (
+                                    <div key={item.id} data-tutorial={showJournalistOverlay && index === 0 ? 'today-first-card' : undefined}>
+                                        {renderQueueCard(item, 'now')}
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </WorkflowSection>
+                                ))
+                            )}
+                        </div>
+                    </section>
 
-                    <WorkflowSection
-                        title="الخطوة التالية في المسار"
-                        hint={isChiefFlow ? 'العناصر التالية بعد حسم العاجل: جاهز للنشر اليدوي أو يحتاج متابعة بتحفظات.' : 'المواد التالية في مسار الأخبار والتحرير بعد إنهاء العاجل.'}
-                        icon={<CheckCircle2 className="w-4 h-4 text-cyan-300" />}
-                        count={(isChiefFlow ? chiefNext : journalistNext).length}
-                        emptyLabel="لا توجد عناصر إضافية في هذه اللحظة."
-                    >
-                        {(isChiefFlow ? chiefNext : journalistNext).length === 0 ? undefined : (
-                            <div className="space-y-3">
-                                {(isChiefFlow ? chiefNext : journalistNext).map((item, index) => (
-                                    <div
-                                        key={item.id}
-                                        data-tutorial={showJournalistOverlay && journalistNow.length === 0 && index === 0 ? 'today-first-card' : undefined}
-                                    >
-                                        <WorkflowCard
-                                            title={item.title}
-                                            subtitle={item.subtitle}
-                                            statusLabel={getWorkflowStatusLabel(item.status)}
-                                            chips={[{ label: item.workflowLabel }]}
-                                            reason={item.reason}
-                                            nextActionLabel={item.nextAction}
-                                            timestamp={item.timestamp}
-                                            blockers={item.blockers}
-                                            tone={item.tone}
-                                            primaryAction={{
-                                                label: item.nextAction,
-                                                href: item.href,
-                                                onClick: () =>
-                                                    trackNextAction('today', item.nextAction, {
-                                                        ...surfaceDetails,
-                                                        queue_section: 'next',
-                                                        item_id: item.id,
-                                                        workflow_label: item.workflowLabel,
-                                                        target_href: item.href,
-                                                    }),
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </WorkflowSection>
+                    <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
+                        <SectionHeader
+                            title="العاجل والحرج"
+                            description="ما يجب أن ينتبه إليه التحرير الآن قبل أن يتحول إلى تأخير أو خسارة تغطية."
+                            icon={ShieldAlert}
+                            count={urgentItems.length || riskItems.length || null}
+                        />
+                        <div className="mt-4 space-y-3">
+                            {urgentItems.length > 0 ? urgentItems.map((item) => renderQueueCard(item, 'urgent')) : null}
+                            {riskItems.slice(0, Math.max(0, 4 - urgentItems.length)).map((item) => renderQueueCard(item, 'risk'))}
+                            {urgentItems.length === 0 && riskItems.length === 0 && (
+                                <EmptyState
+                                    title="لا توجد عناصر حرجة الآن."
+                                    description="الأولوية الحالية مستقرة، ويمكنك الانتقال إلى الخطوة التالية المقترحة."
+                                />
+                            )}
+                        </div>
+                    </section>
 
-                    <WorkflowSection
-                        title="ما الذي يعيق التقدم؟"
-                        hint={isChiefFlow ? 'مواد متأخرة أو عالية الخطورة قد تعطل الاعتماد.' : 'مواد قد تتأخر أو تنبيهات تستحق الانتباه قبل أن تتعطل.'}
-                        icon={isChiefFlow ? <ShieldAlert className="w-4 h-4 text-cyan-300" /> : <AlertTriangle className="w-4 h-4 text-cyan-300" />}
-                        count={(isChiefFlow ? chiefRisk : journalistRisk).length}
-                        emptyLabel="لا توجد عناصر متعثرة حاليًا."
-                    >
-                        {(isChiefFlow ? chiefRisk : journalistRisk).length === 0 ? undefined : (
-                            <div className="space-y-3">
-                                {(isChiefFlow ? chiefRisk : journalistRisk).map((item) => (
-                                    <WorkflowCard
-                                        key={item.id}
-                                        title={item.title}
-                                        subtitle={item.subtitle}
-                                        statusLabel={getWorkflowStatusLabel(item.status)}
-                                        chips={[{ label: item.workflowLabel }]}
-                                        reason={item.reason}
-                                        nextActionLabel={item.nextAction}
-                                        timestamp={item.timestamp}
-                                        blockers={item.blockers}
-                                        tone={item.tone}
-                                        primaryAction={{
-                                            label: item.nextAction,
-                                            href: item.href,
-                                            onClick: () =>
-                                                trackNextAction('today', item.nextAction, {
+                    <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
+                        <SectionHeader
+                            title="الإجراء التالي المقترح"
+                            description="لا تحتاج للبحث بين الصفحات. هذا هو المسار المنطقي التالي بعد إنهاء ما بدأته."
+                            icon={CheckCircle2}
+                            count={nextItems.length || null}
+                        />
+                        <div className="mt-4 space-y-3">
+                            {recommendedAction && (
+                                <ActionCard
+                                    title={recommendedAction.title}
+                                    description={recommendedAction.subtitle}
+                                    reason={recommendedAction.reason}
+                                    actionLabel={recommendedAction.nextAction}
+                                    actionHref={recommendedAction.href}
+                                    actionTone={recommendedAction.tone === 'danger' ? 'danger' : recommendedAction.tone === 'warn' ? 'warn' : 'success'}
+                                    onAction={() => {
+                                        trackFirstAction(recommendedAction.nextAction, { queue_section: 'recommended', item_id: recommendedAction.id });
+                                        trackNextAction('today', recommendedAction.nextAction, {
+                                            ...surfaceDetails,
+                                            queue_section: 'recommended',
+                                            item_id: recommendedAction.id,
+                                            workflow_label: recommendedAction.workflowLabel,
+                                            target_href: recommendedAction.href,
+                                        });
+                                    }}
+                                    meta={
+                                        <>
+                                            <StatusBadge tone="info">{recommendedAction.workflowLabel}</StatusBadge>
+                                            {recommendedAction.timestamp && (
+                                                <StatusBadge tone="default">{new Date(recommendedAction.timestamp).toLocaleDateString('ar-DZ')}</StatusBadge>
+                                            )}
+                                        </>
+                                    }
+                                />
+                            )}
+
+                            {nextItems.slice(0, 2).map((item) => renderQueueCard(item, 'next'))}
+
+                            {(eventSummaryItems.length > 0 || (eventReminders?.t6 || []).length > 0 || (eventReminders?.t24 || []).length > 0) && (
+                                <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-white">ملخص تشغيلي للأحداث</h3>
+                                            <p className="mt-1 text-[11px] leading-6 text-slate-400">حتى لا تضيع المواعيد القريبة خارج صفحة اليوم.</p>
+                                        </div>
+                                        <Link
+                                            href="/events"
+                                            onClick={() =>
+                                                trackMetricEvent('today', 'open_events_from_today', {
                                                     ...surfaceDetails,
-                                                    queue_section: 'risk',
-                                                    item_id: item.id,
-                                                    workflow_label: item.workflowLabel,
-                                                    target_href: item.href,
-                                                }),
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </WorkflowSection>
+                                                    source: 'event_summary',
+                                                })
+                                            }
+                                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-200 hover:text-white"
+                                        >
+                                            فتح مكتب الأحداث
+                                        </Link>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {eventSummaryItems.map((item) => (
+                                            <StatusBadge key={item.label} tone={item.tone}>
+                                                {item.label}: {item.value}
+                                            </StatusBadge>
+                                        ))}
+                                    </div>
+                                    {(eventReminders?.t6 || [])[0] && (
+                                        <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-100">
+                                            <p className="font-semibold">أقرب حدث يتحرك الآن</p>
+                                            <p className="mt-1">{eventReminders?.t6?.[0]?.title}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </section>
                 </div>
             )}
-
-            <WorkflowHelpPanel
-                title="كيف نقرأ هذه الصفحة؟"
-                items={[
-                    {
-                        title: 'ما الذي دخل نطاقي؟',
-                        description: 'كل بطاقة مرتبطة بحالة حقيقية في المسار مثل مسودة جاهزة للتحرير أو جاهز للنشر اليدوي أو بانتظار الاعتماد.',
-                    },
-                    {
-                        title: 'لماذا ظهرت لي؟',
-                        description: 'كل عنصر يشرح سبب ظهوره الآن حتى لا نترك المستخدم يفسّر الحالة بنفسه أو يضيع بين الصفحات.',
-                    },
-                    {
-                        title: 'ما الذي يمنع التقدم؟',
-                        description: 'العناصر المتأخرة أو التي تحمل تحفظات أو عوائق تظهر منفصلة حتى لا تضيع داخل القوائم العامة.',
-                    },
-                ]}
-            />
         </div>
     );
 }

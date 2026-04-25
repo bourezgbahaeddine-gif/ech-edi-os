@@ -162,7 +162,6 @@ async def import_from_env(
         "GEMINI_API_KEY": settings.gemini_api_key,
         "GEMINI_MODEL_FLASH": settings.gemini_model_flash,
         "GEMINI_MODEL_PRO": settings.gemini_model_pro,
-        "GROQ_API_KEY": settings.groq_api_key,
         "YOUTUBE_DATA_API_KEY": settings.youtube_data_api_key,
         "YOUTUBE_TRENDS_ENABLED": str(settings.youtube_trends_enabled).lower(),
         "GOOGLE_FACT_CHECK_API_KEY": settings.google_fact_check_api_key,
@@ -237,9 +236,6 @@ async def test_setting(
     if key == "GEMINI_API_KEY":
         gemini = await ai_service._get_gemini()
         return {"ok": gemini is not None}
-    if key == "GROQ_API_KEY":
-        groq = await ai_service._get_groq()
-        return {"ok": groq is not None}
     if key == "YOUTUBE_DATA_API_KEY":
         api_key = await settings_service.get_value("YOUTUBE_DATA_API_KEY", settings.youtube_data_api_key or "")
         if not api_key:
