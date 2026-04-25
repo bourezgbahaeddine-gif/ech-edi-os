@@ -20,6 +20,7 @@ from app.models.knowledge import (
     StoryClusterMember,
 )
 from app.models.quality import ArticleQualityReport
+from app.models.claim_support import ArticleClaim, ArticleClaimSupport
 from app.models.project_memory import ProjectMemoryItem, ProjectMemoryEvent
 from app.models.msi import (
     MsiRun,
@@ -57,6 +58,7 @@ from app.models.link_intelligence import (
     LinkClickEvent,
 )
 from app.models.job_queue import JobRun, DeadLetterJob
+from app.models.archive_crawl import ArchiveCrawlState, ArchiveCrawlUrl
 from app.models.story import Story, StoryItem, StoryStatus
 from app.models.idempotency import TaskIdempotencyKey
 from app.models.script import (
@@ -72,6 +74,21 @@ from app.models.digital_team import (
     ProgramSlot,
     SocialTask,
     SocialPost,
+    SocialPostVersion,
+)
+from app.models.document_intel import (
+    DocumentIntelDocument,
+    DocumentIntelClaim,
+    DocumentIntelAction,
+)
+from app.models.mil import (
+    MILSignal,
+    MILSignalSource,
+    MILEntity,
+    MILEntityEdge,
+    MILSourceTrustScore,
+    MILCluster,
+    MILClusterArticle,
 )
 
 __all__ = [
@@ -96,6 +113,8 @@ __all__ = [
     "StoryCluster",
     "StoryClusterMember",
     "ArticleQualityReport",
+    "ArticleClaim",
+    "ArticleClaimSupport",
     "ProjectMemoryItem",
     "ProjectMemoryEvent",
     "MsiRun",
@@ -125,6 +144,8 @@ __all__ = [
     "LinkClickEvent",
     "JobRun",
     "DeadLetterJob",
+    "ArchiveCrawlState",
+    "ArchiveCrawlUrl",
     "Story",
     "StoryItem",
     "StoryStatus",
@@ -139,4 +160,15 @@ __all__ = [
     "ProgramSlot",
     "SocialTask",
     "SocialPost",
+    "SocialPostVersion",
+    "DocumentIntelDocument",
+    "DocumentIntelClaim",
+    "DocumentIntelAction",
+    "MILSignal",
+    "MILSignalSource",
+    "MILEntity",
+    "MILEntityEdge",
+    "MILSourceTrustScore",
+    "MILCluster",
+    "MILClusterArticle",
 ]

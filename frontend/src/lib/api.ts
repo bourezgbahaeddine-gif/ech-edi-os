@@ -5,12 +5,55 @@
 
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+const DEFAULT_API_BASE = '/api/v1';
+
+function trimTrailingSlash(value: string): string {
+    return value.replace(/\/$/, '');
+}
+
+function resolveApiBaseUrl(): string {
+    const configuredValue = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+    if (!configuredValue) {
+        return DEFAULT_API_BASE;
+    }
+
+    if (configuredValue.startsWith('/')) {
+        return trimTrailingSlash(configuredValue) || DEFAULT_API_BASE;
+    }
+
+    if (typeof window === 'undefined') {
+        return trimTrailingSlash(configuredValue);
+    }
+
+    try {
+        const parsedUrl = new URL(configuredValue, window.location.origin);
+        const safePath = trimTrailingSlash(parsedUrl.pathname || DEFAULT_API_BASE) || DEFAULT_API_BASE;
+
+        // When the app is served over HTTPS, keep browser requests same-origin and
+        // only trust the configured path. This prevents stale IP/domain build-time
+        // values from causing mixed-content or cross-origin login failures.
+        if (window.location.protocol === 'https:') {
+            return safePath;
+        }
+
+        if (parsedUrl.origin === window.location.origin) {
+            return safePath;
+        }
+
+        return trimTrailingSlash(parsedUrl.toString());
+    } catch {
+        return DEFAULT_API_BASE;
+    }
+}
+
+export const API_BASE = resolveApiBaseUrl();
 
 export const api = axios.create({
     baseURL: API_BASE,
     timeout: 30000,
     headers: { 'Content-Type': 'application/json' },
+    withCredentials: true,
 });
 
 export interface ApiEnvelopeError {
@@ -144,6 +187,24 @@ export interface Article extends ArticleBrief {
     updated_at: string;
 }
 
+export interface ArchiveSearchItem {
+    id: number;
+    title: string | null;
+    summary: string | null;
+    url: string | null;
+    source_name: string | null;
+    published_at: string | null;
+    score: number;
+    corpus: string | null;
+    category?: string | null;
+}
+
+export interface ArchiveSearchResponse {
+    items: ArchiveSearchItem[];
+    query: string;
+    limit: number;
+}
+
 export interface DashboardStats {
     total_articles: number;
     articles_today: number;
@@ -156,6 +217,220 @@ export interface DashboardStats {
     sources_total: number;
     ai_calls_today: number;
     avg_processing_ms: number | null;
+}
+
+export type MILTriageAction = 'suggest' | 'flag' | 'escalate';
+export type MILPriority = 'low' | 'medium' | 'high' | 'critical';
+export type MILTargetSurface =
+    | 'today_orchestration'
+    | 'editorial_sidebar'
+    | 'stories_workspace'
+    | 'events_board'
+    | 'director_dashboard'
+    | 'editor_context';
+export type MILSignalType =
+    | 'cluster_growth'
+    | 'mention_spike'
+    | 'topic_velocity'
+    | 'repeated_entity_burst'
+    | 'competitor_coverage_gap'
+    | 'competitor_breakout_story'
+    | 'competitor_speed_advantage'
+    | 'story_momentum_up'
+    | 'story_momentum_down'
+    | 'story_needs_followup'
+    | 'pre_event_attention_rise'
+    | 'event_localization_growth'
+    | 'newsroom_missing_angle'
+    | 'archive_relevance_found'
+    | 'multi_source_confirmation'
+    | 'low_trust_source_spread'
+    | 'single_source_claim_only';
+
+export interface MILSignalPayload {
+    title: string;
+    entity?: string | null;
+    event_summary: string;
+    related_sources: string[];
+    related_article_ids: number[];
+    source_count: number;
+    cluster_id?: number | null;
+    action_suggested: MILTriageAction;
+    target_surface: MILTargetSurface;
+    recommended_action: string;
+    metadata: Record<string, unknown>;
+}
+
+export interface MILSignalExplanation {
+    reason_codes: string[];
+    human_summary: string;
+    metrics: Record<string, string | number>;
+}
+
+export interface MILSignalListItem {
+    id: number;
+    signal_code: string;
+    signal_type: MILSignalType;
+    triage_action: MILTriageAction;
+    priority: MILPriority;
+    confidence_score: number;
+    target_surface: MILTargetSurface;
+    status: 'active' | 'dismissed' | 'consumed' | 'archived';
+    payload: MILSignalPayload;
+    explanation: MILSignalExplanation;
+    related_story_id?: number | null;
+    related_event_id?: number | null;
+    related_cluster_id?: number | null;
+    created_at: string;
+    updated_at: string;
+    dismissed_at?: string | null;
+    dismissed_by?: number | null;
+    useful_count: number;
+    useful_last_marked_at?: string | null;
+    snoozed_until?: string | null;
+}
+
+export interface MILSignalDetail extends MILSignalListItem {
+    supports: Array<{
+        article_id?: number | null;
+        source_id?: number | null;
+        competitor_item_id?: number | null;
+        support_kind: string;
+        support_ref?: string | null;
+        weight: number;
+        created_at: string;
+    }>;
+}
+
+export interface MILTodayCard {
+    signal_id: number;
+    signal_code: string;
+    title: string;
+    why_it_matters: string;
+    confidence_score: number;
+    recommended_action: string;
+    source_count: number;
+    target_surface: MILTargetSurface;
+    href?: string | null;
+    created_at: string;
+    signal_type: MILSignalType;
+    triage_action: MILTriageAction;
+    priority: MILPriority;
+    useful_count: number;
+}
+
+export interface MILTodaySection {
+    key: string;
+    title: string;
+    hint: string;
+    items: MILTodayCard[];
+}
+
+export interface MILTodayFullResponse {
+    generated_at: string;
+    critical_now: MILTodaySection;
+    watch_closely: MILTodaySection;
+    opportunities: MILTodaySection;
+}
+
+export interface MILDashboardMetric {
+    key: string;
+    label: string;
+    value: string | number;
+    hint?: string | null;
+    tone: string;
+}
+
+export interface MILDashboardListItem {
+    title: string;
+    subtitle?: string | null;
+    hint: string;
+    href?: string | null;
+    confidence_score?: number | null;
+}
+
+export interface MILDashboardResponse {
+    generated_at: string;
+    metrics: MILDashboardMetric[];
+    rising_stories: MILDashboardListItem[];
+    missed_opportunities: MILDashboardListItem[];
+    competitor_pressure: MILDashboardListItem[];
+    source_trust_watch: MILDashboardListItem[];
+}
+
+export interface MILInsightItem {
+    title: string;
+    summary: string;
+    tone: string;
+    confidence_score?: number | null;
+    href?: string | null;
+}
+
+export interface MILStoryInsights {
+    story_id: number;
+    story_title: string;
+    momentum: string;
+    competitor_pressure: string;
+    archive_angle?: string | null;
+    follow_up_angle?: string | null;
+    linked_entities: string[];
+    cards: MILInsightItem[];
+}
+
+export interface MILEventInsights {
+    event_id: number;
+    event_title: string;
+    attention_level: string;
+    geographic_spread: string;
+    social_relevance: string;
+    coverage_risk: string;
+    suggested_pack: string[];
+    cards: MILInsightItem[];
+}
+
+export interface MILEditorContext {
+    draft_id: number;
+    article_id?: number | null;
+    work_id?: string | null;
+    live_signals: MILSignalListItem[];
+    archive_links: MILInsightItem[];
+    missing_angles: MILInsightItem[];
+    related_entities: string[];
+    competitor_angles: MILInsightItem[];
+}
+
+export interface MILActionResponse {
+    signal_id: number;
+    status: string;
+    useful_count: number;
+    snoozed_until?: string | null;
+}
+
+export interface MILClusterSummary {
+    id: number;
+    cluster_key: string;
+    label: string;
+    dominant_entity?: string | null;
+    article_count: number;
+    source_diversity_count: number;
+    velocity_score: number;
+    confidence_score: number;
+    target_surface: string;
+    first_seen_at: string;
+    last_seen_at: string;
+    metadata_json: Record<string, unknown>;
+}
+
+export interface MILEntitySummary {
+    id: number;
+    entity_name: string;
+    entity_type: string;
+    normalized_name: string;
+    aliases_json: string[];
+    mention_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+    trust_context_json: Record<string, unknown>;
 }
 
 export interface PipelineRun {
@@ -187,6 +462,41 @@ export interface OpsOverviewResponse {
     state_age_seconds: Array<{ status: string | null; avg_age_seconds: number; count: number }>;
 }
 
+export interface SystemMonitorResponse {
+    generated_at: string;
+    database: {
+        status: string;
+        latency_ms: number;
+        size_bytes: number;
+        articles_count: number;
+        articles_last_update: string | null;
+    };
+    vector: {
+        vectors_count: number;
+        vectors_last_update: string | null;
+        distinct_articles: number;
+        coverage_percent: number;
+        by_type: Record<string, number>;
+    };
+    redis: {
+        connected: boolean;
+    };
+    queues: {
+        depths: Record<string, number>;
+        total_depth: number;
+    };
+    pipeline: {
+        last_runs: Record<string, string | null>;
+    };
+    sections: Array<{
+        key: string;
+        label: string;
+        count: number;
+        last_update: string | null;
+        age_minutes: number | null;
+    }>;
+}
+
 export interface TimeIntegrityOverview {
     generated_at: string;
     policy: {
@@ -203,11 +513,67 @@ export interface TimeIntegrityOverview {
     skip_reasons: Array<{ reason: string; count: number }>;
     top_stale_sources: Array<{ source: string; count: number }>;
     top_missing_timestamp_sources: Array<{ source: string; count: number }>;
+    source_health_watchlist: TimeIntegrityWatchlist;
     url_date_fallback: {
         accepted_count: number;
         ingested_total: number;
         acceptance_ratio: number;
     };
+}
+
+export interface TimeIntegrityWatchlistItem {
+    source_id: number | null;
+    source_key: string;
+    name: string;
+    enabled: boolean;
+    priority: number;
+    error_count: number;
+    source_known: boolean;
+    health_score: number;
+    health_band: 'excellent' | 'good' | 'review' | 'weak' | string;
+    total_events: number;
+    ingested_count: number;
+    duplicate_count: number;
+    stale_count: number;
+    missing_timestamp_count: number;
+    future_timestamp_count: number;
+    blocked_count: number;
+    stale_rate: number;
+    missing_timestamp_rate: number;
+    duplicate_rate: number;
+    fetch_error_rate: number;
+    actions: string[];
+}
+
+export interface TimeIntegrityWatchlist {
+    window_hours: number;
+    min_events: number;
+    total_sources_observed: number;
+    watchlist_total: number;
+    items: TimeIntegrityWatchlistItem[];
+}
+
+export interface TimeIntegrityWatchlistApplyResponse {
+    message: string;
+    dry_run: boolean;
+    max_changes: number;
+    candidate_changes: number;
+    applied_changes: number;
+    items: Array<{
+        source_id: number;
+        name: string;
+        actions: string[];
+        before: { enabled: boolean; priority: number };
+        after: { enabled: boolean; priority: number };
+        health_score: number;
+        health_band: string;
+    }>;
+    advisories: Array<{
+        source_id: number | null;
+        name: string;
+        actions: string[];
+        note: string;
+    }>;
 }
 
 export interface TimeIntegrityCleanupResponse {
@@ -257,6 +623,66 @@ export interface DashboardNotification {
     severity: 'high' | 'medium' | 'low' | string;
 }
 
+export interface UxTelemetryEventPayload {
+    event_name: string;
+    surface: string;
+    target_surface?: string | null;
+    entity_type?: string | null;
+    entity_id?: string | number | null;
+    action_label?: string | null;
+    page_path?: string | null;
+    details?: Record<string, unknown>;
+}
+
+export interface UxTelemetrySummary {
+    days: number;
+    total_events: number;
+    unique_users: number;
+    surface_views: number;
+    next_action_clicks: number;
+    ui_actions: number;
+    by_surface: Array<{
+        surface: string;
+        total_events: number;
+        surface_views: number;
+        next_action_clicks: number;
+        ui_actions: number;
+    }>;
+    by_role: Array<{
+        role: string;
+        total_events: number;
+        surface_views: number;
+        next_action_clicks: number;
+    }>;
+    top_actions: Array<{
+        action_label: string;
+        total: number;
+    }>;
+    funnels: {
+        chief: Array<{
+            step: string;
+            label: string;
+            users: number;
+        }>;
+        author: Array<{
+            step: string;
+            label: string;
+            users: number;
+        }>;
+    };
+}
+
+export interface UxTelemetryRecentItem {
+    id: number;
+    created_at: string | null;
+    actor_username: string | null;
+    actor_role: string | null;
+    event_name: string | null;
+    surface: string | null;
+    action_label: string | null;
+    page_path: string | null;
+}
+
 export interface PublishedMonitorItem {
     title: string;
     url: string;
@@ -265,12 +691,19 @@ export interface PublishedMonitorItem {
     grade: string;
     issues: string[];
     suggestions: string[];
+    review_report?: string | null;
+    review_verdict?: string | null;
+    review_recommendation?: string | null;
+    review_priority?: string | null;
     metrics: {
         title_length: number;
         word_count: number;
         clickbait_hits: number;
         spelling_hits: number;
         strong_keywords_hits: number;
+        review_breakdown?: Record<string, { score: number; total: number; note?: string }>;
+        review_recommendation?: string;
+        review_priority?: string;
     };
 }
 
@@ -311,6 +744,36 @@ export interface JobStatusResponse {
     queued_at: string | null;
     started_at: string | null;
     finished_at: string | null;
+}
+
+export interface QueueSlaItem {
+    queue_name: string;
+    depth: number;
+    depth_limit: number;
+    oldest_task_age: number;
+    mean_runtime: number;
+    failure_rate_24h: number;
+    stale_failures_excluded_24h?: number;
+    SLA_target_minutes: number;
+    SLA_breached: boolean;
+    active_running_jobs?: number;
+    active_queued_jobs?: number;
+    state_drift_suspected?: boolean;
+}
+
+export interface QueueSlaResponse {
+    generated_at: string;
+    lookback_hours: number;
+    failure_rate_threshold_percent: number;
+    queues: QueueSlaItem[];
+}
+
+export interface RecoverStaleJobsResponse {
+    status: string;
+    stale_running_minutes: number;
+    stale_queued_minutes: number;
+    running_failed: number;
+    queued_failed: number;
 }
 
 export interface WorkspaceDraft {
@@ -376,16 +839,24 @@ export interface SmartEditorContext {
         timeline: Array<{
             id: number;
             title: string;
+            summary?: string | null;
             url: string | null;
             source_name: string | null;
             created_at: string;
+            published_at?: string | null;
+            category?: string | null;
+            status?: string | null;
         }>;
         relations: Array<{
             id: number;
             title: string;
+            summary?: string | null;
             url: string | null;
             source_name: string | null;
             created_at: string;
+            published_at?: string | null;
+            category?: string | null;
+            status?: string | null;
             relation_type: string;
             score: number;
         }>;
@@ -448,6 +919,224 @@ export interface ChiefPendingItem {
         required_fixes: string[];
         created_at: string | null;
     };
+}
+
+export interface ChiefDecisionResponse {
+    article_id: number;
+    status: string | null;
+    decision: string;
+    message: string;
+    overridden_blockers?: string[];
+}
+
+export interface FactCheckClaim {
+    id: string;
+    text: string;
+    claim_type?: string;
+    risk_level?: 'low' | 'medium' | 'high' | string;
+    confidence?: number;
+    sensitive?: boolean;
+    blocking?: boolean;
+    supported?: boolean;
+    support_count?: number;
+    verify_hint?: string;
+    evidence_links?: string[];
+    unverifiable?: boolean;
+    unverifiable_reason?: string;
+    external_matches?: FactCheckExternalMatch[];
+    external_match_count?: number;
+    external_verdict?: 'true' | 'false' | 'mixed' | 'unknown' | string;
+    external_search_queries?: Array<{ query: string; language: string; matches: number }>;
+}
+
+export interface FactCheckExternalMatch {
+    claim: string;
+    claimant?: string;
+    claim_date?: string;
+    publisher?: string;
+    publisher_site?: string;
+    title?: string;
+    url?: string;
+    rating?: string;
+    review_date?: string;
+    language_code?: string;
+}
+
+export interface FactCheckReport {
+    stage: string;
+    passed: boolean;
+    score: number;
+    claims: FactCheckClaim[];
+    external_fact_checks?: {
+        provider: string;
+        queries: number;
+        matches: number;
+        false_claims: number;
+        true_claims: number;
+        enabled?: boolean;
+    };
+    claim_coverage?: {
+        high_risk_total: number;
+        high_risk_supported: number;
+        high_risk_documented_unverifiable: number;
+        high_risk_unsupported: number;
+        percent_high_risk_supported: number;
+    };
+    blocking_reasons: string[];
+    actionable_fixes: string[];
+    unsupported_high_risk_claim_ids?: string[];
+    persisted?: {
+        claims_upserted: number;
+        supports_upserted: number;
+    };
+    threshold: number;
+}
+
+export interface ClaimOverrideInput {
+    claim_id: string;
+    evidence_links?: string[];
+    unverifiable?: boolean;
+    unverifiable_reason?: string;
+}
+
+export interface GateSummaryItem {
+    code: string;
+    message: string;
+    severity: 'blocker' | 'warn' | 'info' | string;
+    details?: Record<string, unknown>;
+}
+
+export interface GateSummary {
+    passed: boolean;
+    counts: {
+        blocker: number;
+        warn: number;
+        info: number;
+    };
+    items: GateSummaryItem[];
+}
+
+export interface WorkspacePublishReadiness {
+    work_id: string;
+    article_id: number;
+    ready_for_publish: boolean;
+    blocking_reasons: string[];
+    reports: Record<string, { passed: boolean; score?: number | null; created_at?: string | null; blocking_reasons?: string[] }>;
+    gates: GateSummary;
+}
+
+export interface ReadyStageReport {
+    stage: string;
+    label?: string;
+    passed: boolean;
+    score?: number | null;
+    created_at?: string | null;
+    blocking_reasons?: string[];
+    actionable_fixes?: string[];
+    report?: Record<string, unknown>;
+    created_by?: string | null;
+}
+
+export interface LinkSuggestionHistoryRun {
+    run_id: string;
+    mode: string;
+    status: string;
+    created_at: string | null;
+    source_counts: Record<string, unknown>;
+    items: LinkSuggestionItem[];
+}
+
+export interface WorkspaceReadyPackage {
+    work_id: string;
+    article: {
+        id: number;
+        title?: string | null;
+        original_title?: string | null;
+        source_name?: string | null;
+        source_url?: string | null;
+        published_at?: string | null;
+        crawled_at?: string | null;
+        created_at?: string | null;
+        updated_at?: string | null;
+    };
+    draft: {
+        id: number;
+        version: number;
+        title?: string | null;
+        body?: string | null;
+        note?: string | null;
+        status?: string | null;
+        created_by?: string | null;
+        updated_by?: string | null;
+        created_at?: string | null;
+        updated_at?: string | null;
+    };
+    journalist: {
+        name?: string | null;
+        created_by?: string | null;
+        updated_by?: string | null;
+    };
+    readiness: WorkspacePublishReadiness;
+    reports: Record<string, ReadyStageReport>;
+    links_history: LinkSuggestionHistoryRun[];
+}
+
+export type WorkspaceOrchestratorTaskKey =
+    | 'first_draft'
+    | 'verify_claims'
+    | 'proofread'
+    | 'quality_review'
+    | 'headline_pack'
+    | 'social_pack'
+    | 'publish_gate';
+
+export interface WorkspacePromptAutofillField {
+    label: string;
+    value: string;
+}
+
+export interface WorkspacePromptSuggestion {
+    work_id: string;
+    article_id: number;
+    task_key: WorkspaceOrchestratorTaskKey;
+    task_label: string;
+    template_key: string;
+    template_title: string;
+    playbook_href: string;
+    reason: string;
+    rationale: string[];
+    auto_filled_fields: WorkspacePromptAutofillField[];
+    prompt_preview: string;
+    operation: string;
+    operation_payload: Record<string, unknown>;
+    auto_apply_default: boolean;
+    run_mode: 'background_task' | 'direct_check' | string;
+    word_count: number;
+}
+
+export interface WorkspaceOrchestratorRunResponse {
+    work_id: string;
+    task: WorkspacePromptSuggestion;
+    status: string;
+    result_type: 'suggestion' | 'claims' | 'quality' | 'headlines' | 'social' | 'readiness' | string;
+    applied: boolean;
+    draft?: WorkspaceDraft;
+    suggestion?: {
+        title?: string | null;
+        body_html?: string;
+        body_text?: string;
+        note?: string;
+        issues?: Array<Record<string, unknown>>;
+        diff?: string;
+        diff_html?: string;
+        diff_stats?: { added: number; removed: number };
+        preview?: { before_text?: string; after_text?: string };
+    } | null;
+    report?: FactCheckReport | Record<string, unknown>;
+    headlines?: Array<Record<string, unknown>>;
+    variants?: Record<string, string>;
+    readiness?: WorkspacePublishReadiness;
+    error?: string;
 }
 
 export interface StoryItemLink {
@@ -526,6 +1215,91 @@ export interface StoryDossierResponse {
     };
 }
 
+export interface StoryClusterMemberRecord {
+    article_id: number;
+    score: number;
+    title: string;
+    source_name?: string | null;
+    category?: string | null;
+    status?: string | null;
+    crawled_at?: string | null;
+    created_at?: string | null;
+}
+
+export interface StoryClusterRecord {
+    cluster_id: number;
+    cluster_key: string;
+    label?: string | null;
+    category?: string | null;
+    geography?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    latest_article_at?: string | null;
+    cluster_size: number;
+    top_entities: Array<{ entity: string; count: number }>;
+    top_topics: Array<{ topic: string; count: number }>;
+    members: StoryClusterMemberRecord[];
+}
+
+export interface StoryClustersResponse {
+    generated_at: string;
+    window_hours: number;
+    filters: {
+        category?: string | null;
+        min_size: number;
+        limit: number;
+    };
+    metrics: {
+        clusters_created: number;
+        average_cluster_size: number;
+        time_to_cluster_minutes: number | null;
+    };
+    items: StoryClusterRecord[];
+}
+
+export interface StoryCoverageMapItem {
+    key: string;
+    label: string;
+    status: 'covered' | 'missing' | string;
+    count: number;
+    description: string;
+}
+
+export interface StoryCoverageMap {
+    score: number;
+    available: string[];
+    missing: string[];
+    items: StoryCoverageMapItem[];
+}
+
+export interface StoryGapItem {
+    code: string;
+    severity: 'high' | 'medium' | 'low' | string;
+    title: string;
+    recommendation: string;
+}
+
+export interface StoryControlCenterResponse {
+    story: StoryDossierResponse['story'];
+    overview: {
+        items_total: number;
+        articles_count: number;
+        drafts_count: number;
+        last_activity_at?: string | null;
+        coverage_score: number;
+        gaps_count: number;
+    };
+    coverage_map: StoryCoverageMap;
+    gaps: StoryGapItem[];
+    timeline: StoryDossierTimelineItem[];
+    highlights: StoryDossierResponse['highlights'];
+    templates: Array<{
+        key: string;
+        label: string;
+        sections: string[];
+    }>;
+}
+
 export interface ScriptOutputRecord {
     id: number;
     script_id: number;
@@ -542,10 +1316,52 @@ export interface ScriptOutputRecord {
     created_at: string | null;
 }
 
+export interface VideoScriptScene {
+    idx: number;
+    duration_s: number;
+    scene_type?: string;
+    priority?: string;
+    visual: string;
+    on_screen_text: string;
+    vo_line: string;
+    asset_status?: string;
+    source_reference?: string | null;
+    locked?: boolean;
+}
+
+export interface VideoCaptionLine {
+    idx: number;
+    start_s: number;
+    end_s: number;
+    text: string;
+}
+
+export interface VideoDeliveryPackage {
+    title: string;
+    thumbnail_line?: string;
+    social_copy?: string;
+    shot_list: string[];
+    source_references: string[];
+    status?: string;
+    exported_at?: string | null;
+}
+
+export interface VideoWorkspaceSummary {
+    video_profile?: string;
+    target_platform?: string;
+    editorial_objective?: string;
+    total_duration_s?: number;
+    delivery_status?: string;
+    next_action?: string;
+    blockers?: Array<{ code: string; message: string; severity: string; details?: Record<string, unknown> }>;
+    warnings?: Array<{ code: string; message: string; severity: string; details?: Record<string, unknown> }>;
+    missing_assets?: number;
+}
+
 export interface ScriptProjectRecord {
     id: number;
     type: 'story_script' | 'video_script' | 'bulletin_daily' | 'bulletin_weekly' | string;
-    status: 'new' | 'generating' | 'ready_for_review' | 'approved' | 'rejected' | 'archived' | string;
+    status: 'new' | 'generating' | 'failed' | 'ready_for_review' | 'approved' | 'rejected' | 'archived' | string;
     story_id: number | null;
     article_id: number | null;
     title: string;
@@ -554,6 +1370,12 @@ export interface ScriptProjectRecord {
     updated_by: string | null;
     created_at: string | null;
     updated_at: string | null;
+    output_count?: number;
+    latest_version?: number | null;
+    latest_output_at?: string | null;
+    latest_quality_blockers?: number;
+    latest_quality_warnings?: number;
+    video_workspace?: VideoWorkspaceSummary;
     outputs: ScriptOutputRecord[];
 }
 
@@ -564,6 +1386,66 @@ export interface ScriptProjectQueuedResponse {
         status: string;
         target_version: number;
     };
+}
+
+export interface ScriptDuplicateVersionResponse {
+    script: ScriptProjectRecord | null;
+    output: ScriptOutputRecord;
+}
+
+export interface ScriptVersionDiffResponse {
+    script_id: number;
+    from_version: number;
+    to_version: number;
+    from_chars: number;
+    to_chars: number;
+    added_lines: number;
+    removed_lines: number;
+    diff_lines: string[];
+}
+
+export interface ScriptRecoveryHintsResponse {
+    script_id: number;
+    project_status: string | null;
+    can_retry_now: boolean;
+    latest_job: {
+        id: string;
+        status: string;
+        error: string | null;
+        updated_at: string | null;
+    } | null;
+    latest_failed_job: {
+        id: string;
+        status: string;
+        error: string | null;
+        updated_at: string | null;
+    } | null;
+    hints: Array<{
+        code: string;
+        severity: 'info' | 'warn' | 'blocker' | string;
+        title: string;
+        action: string;
+    }>;
+}
+
+export interface VideoDeliveryExportBundle {
+    script_id: number;
+    title: string;
+    video_profile: string;
+    target_platform: string;
+    editorial_objective: string;
+    vo_script: string;
+    total_duration_s: number;
+    scenes: VideoScriptScene[];
+    captions_srt: string;
+    captions_lines: VideoCaptionLine[];
+    assets_list: Array<Record<string, unknown>>;
+    thumbnail_ideas: string[];
+    thumbnail_line?: string;
+    social_copy?: string;
+    shot_list: string[];
+    source_references: string[];
+    delivery_status?: string;
 }
 
 export interface SocialApprovedItem {
@@ -606,6 +1488,11 @@ export const newsApi = {
         strict_tokens?: boolean;
         status?: string;
     }) => api.get<ArticleBrief[]>('/news/search/semantic', { params }),
+};
+
+export const archiveApi = {
+    search: (params: { q: string; limit?: number; sort?: 'relevance' | 'recent' }) =>
+        api.get<ArchiveSearchResponse>('/archive/echorouk/search', { params }),
 };
 
 export const sourcesApi = {
@@ -669,6 +1556,10 @@ export const editorialApi = {
         api.post(`/editorial/workspace/drafts/${workId}/apply`),
     submitWorkspaceDraftForChief: (workId: string) =>
         api.post(`/editorial/workspace/drafts/${workId}/submit-for-chief-approval`),
+    selfApproveWorkspaceDraft: (workId: string) =>
+        api.post(`/editorial/workspace/drafts/${workId}/self-approve`),
+    submitWorkspaceDraftWithReservations: (workId: string, data: { notes: string }) =>
+        api.post(`/editorial/workspace/drafts/${workId}/submit-with-reservations`, data),
     archiveWorkspaceDraft: (workId: string) =>
         api.post(`/editorial/workspace/drafts/${workId}/archive`),
     regenerateWorkspaceDraft: (workId: string) =>
@@ -691,6 +1582,8 @@ export const editorialApi = {
         api.post(`/editorial/workspace/drafts/${workId}/restore/${version}`),
     aiRewriteSuggestion: (workId: string, data: { mode: 'formal' | 'breaking' | 'analysis' | 'simple'; instruction?: string }) =>
         api.post(`/editorial/workspace/drafts/${workId}/ai/rewrite`, data),
+    aiInlineSuggestion: (workId: string, data: { action: 'rewrite' | 'shorten' | 'expand' | 'clarify'; text: string }) =>
+        api.post(`/editorial/workspace/drafts/${workId}/ai/inline`, data),
     aiProofreadSuggestion: (workId: string) =>
         api.post(`/editorial/workspace/drafts/${workId}/ai/proofread`),
     aiHeadlineSuggestion: (workId: string, count = 5) =>
@@ -710,6 +1603,12 @@ export const editorialApi = {
         ),
     aiSocialVariants: (workId: string) =>
         api.post(`/editorial/workspace/drafts/${workId}/ai/social`),
+    workspacePromptSuggestion: (workId: string, taskKey?: WorkspaceOrchestratorTaskKey) =>
+        api.get<WorkspacePromptSuggestion>(`/editorial/workspace/drafts/${workId}/ai/orchestrator`, {
+            params: taskKey ? { task_key: taskKey } : undefined,
+        }),
+    runWorkspacePromptTask: (workId: string, data?: { task_key?: WorkspaceOrchestratorTaskKey; auto_apply?: boolean }) =>
+        api.post<WorkspaceOrchestratorRunResponse>(`/editorial/workspace/drafts/${workId}/ai/orchestrator/run`, data || {}),
     applyAiSuggestion: (workId: string, data: {
         title?: string | null;
         body: string;
@@ -717,16 +1616,18 @@ export const editorialApi = {
         based_on_version: number;
         suggestion_tool?: string;
     }) => api.post(`/editorial/workspace/drafts/${workId}/ai/apply`, data),
-    verifyClaims: (workId: string, threshold = 0.7) =>
-        api.post(`/editorial/workspace/drafts/${workId}/verify/claims`, { threshold }),
+    verifyClaims: (workId: string, threshold = 0.7, claim_overrides: ClaimOverrideInput[] = []) =>
+        api.post<FactCheckReport>(`/editorial/workspace/drafts/${workId}/verify/claims`, { threshold, claim_overrides }),
     qualityScore: (workId: string) =>
         api.post(`/editorial/workspace/drafts/${workId}/quality/score`),
     publishReadiness: (workId: string) =>
-        api.get(`/editorial/workspace/drafts/${workId}/publish-readiness`),
+        api.get<WorkspacePublishReadiness>(`/editorial/workspace/drafts/${workId}/publish-readiness`),
+    workspaceReadyPackage: (workId: string) =>
+        api.get<WorkspaceReadyPackage>(`/editorial/workspace/drafts/${workId}/ready-package`),
     chiefPending: (limit = 100) =>
         api.get<ChiefPendingItem[]>(`/editorial/chief/pending`, { params: { limit } }),
     chiefFinalDecision: (articleId: number, data: { decision: 'approve' | 'approve_with_reservations' | 'send_back' | 'reject' | 'return_for_revision'; notes?: string }) =>
-        api.post(`/editorial/${articleId}/chief/final-decision`, data),
+        api.post<ChiefDecisionResponse>(`/editorial/${articleId}/chief/final-decision`, data),
     socialApprovedFeed: (limit = 50) =>
         api.get<SocialApprovedItem[]>(`/editorial/social/approved-feed`, { params: { limit } }),
     socialVariantsForArticle: (articleId: number) =>
@@ -737,6 +1638,8 @@ export const editorialApi = {
 
 export const storiesApi = {
     list: (params?: { limit?: number }) => api.get<StoryRecord[]>('/stories', { params }),
+    clusters: (params?: { hours?: number; category?: string; min_size?: number; limit?: number }) =>
+        api.get<StoryClustersResponse>('/stories/clusters', { params }),
     get: (storyId: number) => api.get<StoryRecord>(`/stories/${storyId}`),
     createFromArticle: (articleId: number, params?: { reuse?: boolean }) =>
         api.post<{ story: StoryRecord; linked_items_count: number; reused: boolean }>(`/stories/from-article/${articleId}`, null, { params }),
@@ -746,6 +1649,8 @@ export const storiesApi = {
         api.post<{ story_id: number; article_id: number; story_item_id: number }>(`/stories/${storyId}/link/article/${articleId}`, payload || {}),
     dossier: (storyId: number, params?: { timeline_limit?: number }) =>
         api.get<StoryDossierResponse>(`/stories/${storyId}/dossier`, { params }),
+    controlCenter: (storyId: number, params?: { timeline_limit?: number }) =>
+        api.get<StoryControlCenterResponse>(`/stories/${storyId}/control-center`, { params }),
 };
 
 export const scriptsApi = {
@@ -763,6 +1668,9 @@ export const scriptsApi = {
             length_seconds?: number;
             language?: string;
             style_constraints?: string[];
+            video_profile?: string;
+            target_platform?: string;
+            editorial_objective?: string;
         },
     ) => api.post<ScriptProjectQueuedResponse>(`/scripts/from-article/${articleId}`, payload),
     createFromStory: (
@@ -773,6 +1681,9 @@ export const scriptsApi = {
             length_seconds?: number;
             language?: string;
             style_constraints?: string[];
+            video_profile?: string;
+            target_platform?: string;
+            editorial_objective?: string;
         },
     ) => api.post<ScriptProjectQueuedResponse>(`/scripts/from-story/${storyId}`, payload),
     generateDailyBulletin: (
@@ -799,6 +1710,98 @@ export const scriptsApi = {
         api.post<ScriptProjectRecord>(`/scripts/${scriptId}/approve`, payload || {}),
     reject: (scriptId: number, payload: { reason: string }) =>
         api.post<ScriptProjectRecord>(`/scripts/${scriptId}/reject`, payload),
+    regenerate: (
+        scriptId: number,
+        payload?: {
+            tone?: string;
+            length_seconds?: number;
+            language?: string;
+            style_constraints?: string[];
+            max_items?: number;
+            duration_minutes?: number;
+            desks?: string[];
+            video_profile?: string;
+            target_platform?: string;
+            editorial_objective?: string;
+        },
+    ) => api.post<ScriptProjectQueuedResponse>(`/scripts/${scriptId}/regenerate`, payload || {}),
+    duplicateVersion: (scriptId: number, payload?: { source_version?: number }) =>
+        api.post<ScriptDuplicateVersionResponse>(`/scripts/${scriptId}/duplicate-version`, payload || {}),
+    versionsDiff: (scriptId: number, fromVersion: number, toVersion: number) =>
+        api.get<ScriptVersionDiffResponse>(`/scripts/${scriptId}/versions/diff`, {
+            params: { from_version: fromVersion, to_version: toVersion },
+        }),
+    recoveryHints: (scriptId: number) =>
+        api.get<ScriptRecoveryHintsResponse>(`/scripts/${scriptId}/recovery-hints`),
+    updateVideoWorkspace: (
+        scriptId: number,
+        payload: Partial<{
+            video_profile: string;
+            target_platform: string;
+            editorial_objective: string;
+            pace_notes: string;
+            hook: string;
+            closing: string;
+            vo_script: string;
+            hook_strength: number;
+        }>
+    ) => api.patch<ScriptProjectRecord>(`/scripts/${scriptId}/video`, payload),
+    updateScene: (
+        scriptId: number,
+        sceneIdx: number,
+        payload: Partial<{
+            duration_s: number;
+            scene_type: string;
+            priority: string;
+            visual: string;
+            on_screen_text: string;
+            vo_line: string;
+            asset_status: string;
+            source_reference: string | null;
+            locked: boolean;
+        }>
+    ) => api.patch<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}`, payload),
+    addScene: (
+        scriptId: number,
+        payload: {
+            insert_after?: number;
+            duration_s?: number;
+            scene_type?: string;
+            priority?: string;
+            visual?: string;
+            on_screen_text?: string;
+            vo_line?: string;
+            asset_status?: string;
+            source_reference?: string | null;
+        }
+    ) => api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes`, payload),
+    deleteScene: (scriptId: number, sceneIdx: number) => api.delete<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}`),
+    reorderScenes: (scriptId: number, ordered_scene_indices: number[]) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/reorder`, { ordered_scene_indices }),
+    splitScene: (scriptId: number, sceneIdx: number, split_duration_s: number) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}/split`, { split_duration_s }),
+    mergeScenes: (scriptId: number, source_idx: number, target_idx: number) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/merge`, { source_idx, target_idx }),
+    lockScene: (scriptId: number, sceneIdx: number) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}/lock`, {}),
+    unlockScene: (scriptId: number, sceneIdx: number) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}/unlock`, {}),
+    regenerateScene: (scriptId: number, sceneIdx: number) =>
+        api.post<ScriptProjectRecord>(`/scripts/${scriptId}/scenes/${sceneIdx}/regenerate`, {}),
+    updateCaptions: (scriptId: number, captions_lines: VideoCaptionLine[]) =>
+        api.patch<ScriptProjectRecord>(`/scripts/${scriptId}/captions`, { captions_lines }),
+    updateDelivery: (
+        scriptId: number,
+        payload: Partial<{
+            title: string;
+            thumbnail_line: string;
+            social_copy: string;
+            shot_list: string[];
+            source_references: string[];
+            status: string;
+        }>
+    ) => api.patch<ScriptProjectRecord>(`/scripts/${scriptId}/delivery`, payload),
+    exportDelivery: (scriptId: number) => api.post<VideoDeliveryExportBundle>(`/scripts/${scriptId}/delivery/export`, {}),
 };
 
 export const dashboardApi = {
@@ -829,14 +1832,49 @@ export const dashboardApi = {
         api.get<{ items: DashboardNotification[]; total: number }>('/dashboard/notifications', { params }),
     opsOverview: (params?: { lookback_hours?: number }) =>
         api.get<OpsOverviewResponse>('/dashboard/ops/overview', { params }),
+    systemMonitor: () => api.get<SystemMonitorResponse>('/dashboard/system/monitor'),
     timeIntegrity: (params?: { max_age_hours?: number; top_sources_limit?: number }) =>
         api.get<TimeIntegrityOverview>('/dashboard/time-integrity', { params }),
     timeIntegrityCleanup: (params?: { dry_run?: boolean; max_age_hours?: number }) =>
         api.post<TimeIntegrityCleanupResponse>('/dashboard/time-integrity/cleanup', null, { params }),
+    timeIntegrityWatchlist: (params?: { top_sources_limit?: number; min_events?: number; include_disabled?: boolean }) =>
+        api.get<TimeIntegrityWatchlist>('/dashboard/time-integrity/watchlist', { params }),
+    timeIntegrityWatchlistApply: (params?: {
+        dry_run?: boolean;
+        top_sources_limit?: number;
+        min_events?: number;
+        max_changes?: number;
+        include_disabled?: boolean;
+    }) =>
+        api.post<TimeIntegrityWatchlistApplyResponse>('/dashboard/time-integrity/watchlist/apply', null, { params }),
+};
+
+export const milApi = {
+    analyzeRecent: (payload?: { hours?: number; max_articles?: number; include_competitors?: boolean }) =>
+        api.post<{ job_id: string; status: string; job_type: string }>('/mil/analyze/recent', payload || {}),
+    signals: (params?: { triage_action?: MILTriageAction; status?: string; limit?: number }) =>
+        api.get<MILSignalListItem[]>('/mil/signals', { params }),
+    signalDetail: (signalId: number) => api.get<MILSignalDetail>(`/mil/signals/${signalId}`),
+    dismissSignal: (signalId: number, payload?: { note?: string }) =>
+        api.post<{ signal_id: number; status: string; dismissed_at?: string | null }>(`/mil/signals/${signalId}/dismiss`, payload || {}),
+    todayEscalations: (params?: { limit?: number }) => api.get<MILTodayCard[]>('/mil/today/escalations', { params }),
+    todayFull: (params?: { limit_per_section?: number }) => api.get<MILTodayFullResponse>('/mil/today/full', { params }),
+    dashboard: () => api.get<MILDashboardResponse>('/mil/dashboard'),
+    entities: (params?: { limit?: number }) => api.get<MILEntitySummary[]>('/mil/entities', { params }),
+    clusters: (params?: { limit?: number }) => api.get<MILClusterSummary[]>('/mil/clusters', { params }),
+    storyInsights: (storyId: number) => api.get<MILStoryInsights>(`/mil/stories/${storyId}/insights`),
+    eventInsights: (eventId: number) => api.get<MILEventInsights>(`/mil/events/${eventId}/insights`),
+    editorContext: (params: { draft_id?: number; work_id?: string }) => api.get<MILEditorContext>('/mil/editor/context', { params }),
+    markUseful: (signalId: number) => api.post<MILActionResponse>(`/mil/signals/${signalId}/useful`, {}),
+    snoozeSignal: (signalId: number, payload?: { hours?: number }) =>
+        api.post<MILActionResponse>(`/mil/signals/${signalId}/snooze`, payload || { hours: 6 }),
 };
 
 export const jobsApi = {
     getJob: (jobId: string) => api.get<JobStatusResponse>(`/jobs/${jobId}`),
+    getSla: (params?: { lookback_hours?: number }) => api.get<QueueSlaResponse>('/jobs/sla', { params }),
+    recoverStale: (params?: { stale_running_minutes?: number; stale_queued_minutes?: number }) =>
+        api.post<RecoverStaleJobsResponse>('/jobs/recover/stale', null, { params }),
 };
 
 // ── Auth API ──
@@ -869,6 +1907,7 @@ export interface UserActivityLogItem {
 export interface ProjectMemoryItem {
     id: number;
     memory_type: 'operational' | 'knowledge' | 'session' | string;
+    memory_subtype: 'general' | 'style_rule' | 'editorial_decision' | 'fact_pattern' | 'coverage_lesson' | 'source_note' | 'story_context' | 'event_playbook' | 'incident_postmortem' | string | null;
     title: string;
     content: string;
     tags: string[];
@@ -877,6 +1916,8 @@ export interface ProjectMemoryItem {
     article_id: number | null;
     status: 'active' | 'archived' | string;
     importance: number;
+    freshness_status: 'stable' | 'review_soon' | 'expired' | string;
+    valid_until: string | null;
     created_by_user_id: number | null;
     created_by_username: string | null;
     updated_by_user_id: number | null;
@@ -912,6 +1953,12 @@ export interface ProjectMemoryListResponse {
     pages: number;
 }
 
+export interface ProjectMemoryRecommendation extends ProjectMemoryItem {
+    recommendation_reason: string;
+    recommendation_score: number;
+    matched_signals: string[];
+}
+
 export type EventMemoScope = 'national' | 'international' | 'religious';
 export type EventMemoStatus = 'planned' | 'monitoring' | 'covered' | 'dismissed';
 export type EventMemoReadiness = 'idea' | 'assigned' | 'prepared' | 'ready' | 'covered';
@@ -934,9 +1981,15 @@ export interface EventMemoItem {
     source_url: string | null;
     tags: string[];
     checklist: string[];
+    playbook_key: string;
+    story_id: number | null;
+    story_key: string | null;
+    story_title: string | null;
     prep_starts_at: string;
     is_due_soon: boolean;
     is_overdue: boolean;
+    readiness_score: number;
+    readiness_breakdown: Record<string, number>;
     preparation_started_at: string | null;
     owner_user_id: number | null;
     owner_username: string | null;
@@ -982,6 +2035,59 @@ export interface EventMemoImportResult {
     skipped: number;
     errors_count: number;
     errors: Array<{ index: number; error: string }>;
+}
+
+export interface EventActionItem {
+    code: string;
+    severity: 'high' | 'medium' | 'low' | string;
+    title: string;
+    recommendation: string;
+    action: string;
+    event: EventMemoItem;
+}
+
+export interface EventActionItemsResponse {
+    total: number;
+    high: number;
+    medium: number;
+    low: number;
+    items: EventActionItem[];
+}
+
+export interface EventCoverageResponse {
+    event_id: number;
+    story_id: number | null;
+    story_key: string | null;
+    story_title: string | null;
+    coverage_score: number;
+    readiness_score: number;
+    readiness_breakdown: Record<string, number>;
+    metrics: Record<string, number>;
+    timeline: Array<{
+        code: string;
+        label: string;
+        due_at: string | null;
+        is_due: boolean;
+        done: boolean;
+        action: string;
+    }>;
+    next_action: string | null;
+}
+
+export interface EventPlaybookTemplate {
+    key: string;
+    label: string;
+    checklist: string[];
+    timeline: string[];
+}
+
+export interface EventAutomationRunResponse {
+    event_id: number;
+    story_created: boolean;
+    story_linked: boolean;
+    status_updated: boolean;
+    readiness_updated: boolean;
+    actions: string[];
 }
 
 export type DigitalChannel = 'news' | 'tv';
@@ -1037,6 +2143,7 @@ export interface DigitalTask {
     program_slot_id: number | null;
     event_id: number | null;
     article_id: number | null;
+    story_id: number | null;
     owner_user_id: number | null;
     owner_username: string | null;
     published_posts_count: number;
@@ -1071,6 +2178,7 @@ export interface DigitalPost {
     updated_by_username: string | null;
     created_at: string;
     updated_at: string;
+    versions_count: number;
 }
 
 export interface DigitalOverview {
@@ -1123,6 +2231,134 @@ export interface DigitalComposeResult {
         id: number | null;
         title: string;
     };
+    coverage_pack?: {
+        core_statement?: string | null;
+        headline_short?: string | null;
+        summary_mobile?: string | null;
+        push_text?: string | null;
+        social_text?: string | null;
+        breaking_alert?: string | null;
+        checks?: Array<{
+            code: string;
+            level: string;
+            message: string;
+        }>;
+    };
+}
+
+export interface DigitalTaskActionItem {
+    task: DigitalTask;
+    next_best_action_code: string;
+    next_best_action: string;
+    why_now: string;
+    source_type: string;
+    source_ref: string | null;
+    auto_generated: boolean;
+    trigger_window: string | null;
+    risk_flags: string[];
+}
+
+export interface DigitalActionDeskResponse {
+    now: DigitalTaskActionItem[];
+    next: DigitalTaskActionItem[];
+    at_risk: DigitalTaskActionItem[];
+    now_count: number;
+    next_count: number;
+    at_risk_count: number;
+}
+
+export interface DigitalPostVersion {
+    id: number;
+    post_id: number;
+    version_no: number;
+    version_type: string;
+    content_text: string;
+    hashtags: string[];
+    media_urls: string[];
+    note: string | null;
+    created_by_username: string | null;
+    created_at: string;
+}
+
+export interface DigitalPostVersionListResponse {
+    items: DigitalPostVersion[];
+    total: number;
+}
+
+export interface SocialPostListResponse {
+    items: DigitalPost[];
+    total: number;
+}
+
+export interface DigitalPostCompareResponse {
+    post_id: number;
+    base_version_no: number;
+    target_version_no: number;
+    base_length: number;
+    target_length: number;
+    length_delta: number;
+    hashtags_added: string[];
+    hashtags_removed: string[];
+    media_added: string[];
+    media_removed: string[];
+    changed: boolean;
+}
+
+export interface DigitalEngagementScoreResponse {
+    post_id: number;
+    platform: string;
+    score: number;
+    signals: Record<string, number>;
+    recommendations: string[];
+}
+
+export interface DigitalPlaybookTemplate {
+    key: string;
+    label: string;
+    objective: string;
+    platforms: string[];
+    max_length_hint: Record<string, number>;
+    cta_style: string | null;
+    include_hashtags: boolean;
+    include_media_slot: boolean;
+    desk?: 'news' | 'tv' | null;
+}
+
+export interface DigitalBundleGenerateResponse {
+    task_id: number;
+    playbook_key: string;
+    generated_count: number;
+    created_post_ids: number[];
+    variants: Record<string, string>;
+    hashtags: string[];
+}
+
+export interface DigitalDispatchResponse {
+    post_id: number;
+    adapter: string;
+    action: string;
+    status: string;
+    dispatched_at: string;
+    message: string;
+}
+
+export interface DigitalScopePerformanceItem {
+    user_id: number | null;
+    username: string | null;
+    can_manage_news: boolean;
+    can_manage_tv: boolean;
+    total_tasks: number;
+    active_tasks: number;
+    overdue_tasks: number;
+    done_tasks: number;
+    failed_posts: number;
+    published_posts: number;
+    on_time_rate: number;
+}
+
+export interface DigitalScopePerformanceResponse {
+    items: DigitalScopePerformanceItem[];
+    total: number;
 }
 
 export interface MsiProfileInfo {
@@ -1356,6 +2592,23 @@ export interface DocumentIntelNewsItem {
     entities: string[];
 }
 
+export interface DocumentIntelClaim {
+    text: string;
+    type: 'factual' | 'legal' | 'statistical' | 'attribution' | string;
+    confidence: number;
+    risk_level: 'low' | 'medium' | 'high' | string;
+}
+
+export interface DocumentIntelEntity {
+    name: string;
+    type: 'person' | 'organization' | 'location' | string;
+}
+
+export interface DocumentIntelStoryAngle {
+    title: string;
+    why_it_matters: string;
+}
+
 export interface DocumentIntelDataPoint {
     rank: number;
     category: string;
@@ -1364,16 +2617,54 @@ export interface DocumentIntelDataPoint {
 }
 
 export interface DocumentIntelExtractResult {
+    document_id?: number | null;
     filename: string;
     parser_used: string;
     language_hint: string;
     detected_language: string;
     stats: DocumentIntelStats;
+    document_summary: string;
+    document_type: string;
     headings: string[];
     news_candidates: DocumentIntelNewsItem[];
+    claims: DocumentIntelClaim[];
+    entities: DocumentIntelEntity[];
+    story_angles: DocumentIntelStoryAngle[];
     data_points: DocumentIntelDataPoint[];
     warnings: string[];
     preview_text: string;
+}
+
+export interface DocumentIntelActionResult {
+    document_id: number;
+    action_type: string;
+    target_type?: string | null;
+    target_id?: string | null;
+    message: string;
+    payload: Record<string, unknown>;
+}
+
+export interface DocumentIntelActionLogItem {
+    id: number;
+    action_type: string;
+    target_type?: string | null;
+    target_id?: string | null;
+    note?: string | null;
+    payload: Record<string, unknown>;
+    actor_username?: string | null;
+    created_at: string;
+}
+
+export interface DocumentIntelCreateDraftPayload {
+    angle_title?: string;
+    claim_indexes?: number[];
+    category?: string;
+    urgency?: string;
+}
+
+export interface DocumentIntelCreateStoryPayload {
+    angle_title?: string;
+    angle_why_it_matters?: string;
 }
 
 export interface DocumentIntelExtractSubmitResult {
@@ -1471,7 +2762,7 @@ export interface UpdateUserPayload {
 
 export const authApi = {
     login: (username: string, password: string) =>
-        api.post<{ access_token: string; token_type: string; user: TeamMember }>('/auth/login', { username, password }),
+        api.post<{ access_token?: string | null; token_type: string; user: TeamMember }>('/auth/login', { username, password }),
     me: () => api.get<TeamMember>('/auth/me'),
     logout: () => api.post('/auth/logout'),
     users: () => api.get<TeamMember[]>('/auth/users'),
@@ -1486,14 +2777,24 @@ export const memoryApi = {
     list: (params?: {
         q?: string;
         memory_type?: string;
+        memory_subtype?: string;
         status?: string;
+        freshness_status?: string;
         tag?: string;
         page?: number;
         per_page?: number;
     }) => api.get<ProjectMemoryListResponse>('/memory/items', { params }),
     get: (itemId: number) => api.get<ProjectMemoryItem>(`/memory/items/${itemId}`),
+    recommendations: (params?: {
+        article_id?: number;
+        q?: string;
+        tags?: string;
+        memory_type?: string;
+        limit?: number;
+    }) => api.get<ProjectMemoryRecommendation[]>('/memory/recommendations', { params }),
     create: (payload: {
         memory_type: 'operational' | 'knowledge' | 'session';
+        memory_subtype?: string;
         title: string;
         content: string;
         tags?: string[];
@@ -1501,9 +2802,26 @@ export const memoryApi = {
         source_ref?: string | null;
         article_id?: number | null;
         importance?: number;
+        freshness_status?: 'stable' | 'review_soon' | 'expired';
+        valid_until?: string | null;
     }) => api.post<ProjectMemoryItem>('/memory/items', payload),
+    quickCapture: (payload: {
+        memory_type: 'operational' | 'knowledge' | 'session';
+        memory_subtype?: string;
+        title: string;
+        content: string;
+        tags?: string[];
+        source_type?: string | null;
+        source_ref?: string | null;
+        article_id?: number | null;
+        importance?: number;
+        freshness_status?: 'stable' | 'review_soon' | 'expired';
+        valid_until?: string | null;
+        note?: string | null;
+    }) => api.post<ProjectMemoryItem>('/memory/quick-capture', payload),
     update: (itemId: number, payload: Partial<{
         memory_type: 'operational' | 'knowledge' | 'session';
+        memory_subtype: string | null;
         title: string;
         content: string;
         tags: string[];
@@ -1512,6 +2830,8 @@ export const memoryApi = {
         article_id: number | null;
         importance: number;
         status: 'active' | 'archived';
+        freshness_status: 'stable' | 'review_soon' | 'expired';
+        valid_until: string | null;
     }>) => api.patch<ProjectMemoryItem>(`/memory/items/${itemId}`, payload),
     markUsed: (itemId: number, note?: string) =>
         api.post<ProjectMemoryEvent>(`/memory/items/${itemId}/use`, { note }),
@@ -1522,6 +2842,9 @@ export const memoryApi = {
 export const eventsApi = {
     overview: (params?: { window_days?: number }) =>
         api.get<EventMemoOverview>('/events/overview', { params }),
+    actionItems: (params?: { limit?: number }) =>
+        api.get<EventActionItemsResponse>('/events/action-items', { params }),
+    playbooks: () => api.get<EventPlaybookTemplate[]>('/events/playbooks'),
     reminders: (params?: { limit?: number }) =>
         api.get<EventMemoRemindersResponse>('/events/reminders', { params }),
     list: (params?: {
@@ -1531,11 +2854,14 @@ export const eventsApi = {
         only_active?: boolean;
         from_at?: string;
         to_at?: string;
+        story_id?: number;
         page?: number;
         per_page?: number;
     }) => api.get<EventMemoListResponse>('/events/', { params }),
     upcoming: (params?: { hours?: number; limit?: number }) =>
         api.get<EventMemoItem[]>('/events/upcoming', { params }),
+    coverage: (eventId: number) =>
+        api.get<EventCoverageResponse>(`/events/${eventId}/coverage`),
     create: (payload: {
         scope: EventMemoScope;
         title: string;
@@ -1554,6 +2880,8 @@ export const eventsApi = {
         tags?: string[];
         checklist?: string[];
         owner_user_id?: number | null;
+        playbook_key?: string;
+        story_id?: number | null;
     }) => api.post<EventMemoItem>('/events/', payload),
     update: (eventId: number, payload: Partial<{
         scope: EventMemoScope;
@@ -1574,7 +2902,22 @@ export const eventsApi = {
         checklist: string[];
         owner_user_id: number | null;
         preparation_started_at: string | null;
+        playbook_key: string;
+        story_id: number | null;
     }>) => api.patch<EventMemoItem>(`/events/${eventId}`, payload),
+    linkStory: (
+        eventId: number,
+        payload: {
+            story_id?: number | null;
+            create_if_missing?: boolean;
+            title?: string;
+            summary?: string | null;
+            category?: string | null;
+            geography?: string | null;
+        },
+    ) => api.post<EventMemoItem>(`/events/${eventId}/story`, payload),
+    runAutomation: (eventId: number) =>
+        api.post<EventAutomationRunResponse>(`/events/${eventId}/automation/run`, {}),
     remove: (eventId: number) => api.delete<{ message: string }>(`/events/${eventId}`),
     importDb: (params?: { overwrite?: boolean }) =>
         api.post<EventMemoImportResult>('/events/import-db', null, { params }),
@@ -1582,6 +2925,9 @@ export const eventsApi = {
 
 export const digitalApi = {
     overview: () => api.get<DigitalOverview>('/digital/overview'),
+    actionDesk: (params?: { channel?: DigitalChannel | 'all'; limit_each?: number }) =>
+        api.get<DigitalActionDeskResponse>('/digital/action-desk', { params }),
+    playbooks: () => api.get<DigitalPlaybookTemplate[]>('/digital/playbooks'),
     scopes: () => api.get<DigitalScope[]>('/digital/scopes'),
     updateScope: (
         userId: number,
@@ -1665,6 +3011,7 @@ export const digitalApi = {
         program_slot_id?: number | null;
         event_id?: number | null;
         article_id?: number | null;
+        story_id?: number | null;
     }) => api.post<DigitalTask>('/digital/tasks', payload),
     updateTask: (
         taskId: number,
@@ -1678,8 +3025,13 @@ export const digitalApi = {
             due_at: string | null;
             scheduled_at: string | null;
             owner_user_id: number | null;
+            story_id: number | null;
         }>
     ) => api.patch<DigitalTask>(`/digital/tasks/${taskId}`, payload),
+    generateBundle: (
+        taskId: number,
+        payload: { playbook_key?: string; save_as_posts?: boolean }
+    ) => api.post<DigitalBundleGenerateResponse>(`/digital/tasks/${taskId}/bundle`, payload),
     composeTask: (
         taskId: number,
         payload?: {
@@ -1701,6 +3053,12 @@ export const digitalApi = {
             external_post_id?: string | null;
         }
     ) => api.post<DigitalPost>(`/digital/tasks/${taskId}/posts`, payload),
+    listPosts: (params?: {
+        channel?: DigitalChannel | 'all';
+        status?: string;
+        limit?: number;
+        created_by_user_id?: number;
+    }) => api.get<SocialPostListResponse>('/digital/posts', { params }),
     updatePost: (
         postId: number,
         payload: Partial<{
@@ -1713,10 +3071,32 @@ export const digitalApi = {
             published_url: string | null;
             external_post_id: string | null;
             error_message: string | null;
+            version_note: string | null;
         }>
     ) => api.patch<DigitalPost>(`/digital/posts/${postId}`, payload),
     markPostPublished: (postId: number, params?: { published_url?: string; external_post_id?: string }) =>
         api.post<DigitalPost>(`/digital/posts/${postId}/mark-published`, null, { params }),
+    regeneratePost: (postId: number) => api.post<DigitalPost>(`/digital/posts/${postId}/regenerate`, {}),
+    listPostVersions: (postId: number) => api.get<DigitalPostVersionListResponse>(`/digital/posts/${postId}/versions`),
+    duplicatePostVersion: (
+        postId: number,
+        payload?: { source_version_no?: number; version_type?: string; note?: string | null }
+    ) => api.post<DigitalPostVersion>(`/digital/posts/${postId}/versions/duplicate`, payload || {}),
+    comparePostVersions: (postId: number, params: { base_version_no: number; target_version_no: number }) =>
+        api.get<DigitalPostCompareResponse>(`/digital/posts/${postId}/compare`, { params }),
+    postEngagementScore: (postId: number) =>
+        api.get<DigitalEngagementScoreResponse>(`/digital/posts/${postId}/engagement-score`),
+    dispatchPost: (
+        postId: number,
+        payload: {
+            adapter?: string;
+            action?: 'publish' | 'schedule';
+            scheduled_at?: string | null;
+            published_url?: string | null;
+            external_post_id?: string | null;
+        }
+    ) => api.post<DigitalDispatchResponse>(`/digital/posts/${postId}/dispatch`, payload),
+    scopePerformance: () => api.get<DigitalScopePerformanceResponse>('/digital/scopes/performance'),
     calendar: (params?: { from_date?: string; days?: number; channel?: DigitalChannel | 'all' }) =>
         api.get<DigitalCalendarResponse>('/digital/calendar', { params }),
 };
@@ -1806,6 +3186,8 @@ export const documentIntelApi = {
         });
     },
     getExtractJobStatus: (jobId: string) => api.get<DocumentIntelExtractJobStatus>(`/document-intel/extract/${jobId}`),
+    getDocument: (documentId: number) => api.get<DocumentIntelExtractResult>(`/document-intel/documents/${documentId}`),
+    listActions: (documentId: number) => api.get<DocumentIntelActionLogItem[]>(`/document-intel/documents/${documentId}/actions`),
     extractFromUpload: (payload: {
         file: File;
         language_hint?: 'ar' | 'fr' | 'en' | 'auto';
@@ -1822,6 +3204,13 @@ export const documentIntelApi = {
             timeout: 180000,
         });
     },
+    createDraft: (documentId: number, payload?: DocumentIntelCreateDraftPayload) =>
+        api.post<DocumentIntelActionResult>(`/document-intel/documents/${documentId}/create-draft`, payload || {}),
+    createStory: (documentId: number, payload?: DocumentIntelCreateStoryPayload) =>
+        api.post<DocumentIntelActionResult>(`/document-intel/documents/${documentId}/create-story`, payload || {}),
+    saveToMemory: (documentId: number) => api.post<DocumentIntelActionResult>(`/document-intel/documents/${documentId}/save-memory`),
+    sendToFactcheck: (documentId: number) =>
+        api.post<DocumentIntelActionResult>(`/document-intel/documents/${documentId}/send-to-factcheck`),
 };
 
 export const competitorXrayApi = {
@@ -1843,6 +3232,13 @@ export const competitorXrayApi = {
 };
 
 // ── Axios Interceptors: envelope compatibility + auth handling ──
+
+export const telemetryApi = {
+    logUxEvent: (payload: UxTelemetryEventPayload) =>
+        api.post<{ logged: boolean; surface: string; event_name: string }>('/telemetry/ux', payload),
+    summary: (days = 7) => api.get<UxTelemetrySummary>('/telemetry/ux/summary', { params: { days } }),
+    recent: (limit = 30) => api.get<UxTelemetryRecentItem[]>('/telemetry/ux/recent', { params: { limit } }),
+};
 
 api.interceptors.response.use(
     (response) => {
@@ -1880,11 +3276,8 @@ api.interceptors.response.use(
         }
 
         if (error.response?.status === 401 && typeof window !== 'undefined') {
-            localStorage.removeItem('echorouk_token');
-            localStorage.removeItem('echorouk_user');
             window.location.href = '/login';
         }
         return Promise.reject(error);
     }
 );
-

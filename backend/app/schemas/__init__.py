@@ -155,7 +155,7 @@ class EditorDecisionResponse(BaseModel):
 # ── AI Analysis Schema ──
 
 class AIAnalysisResult(BaseModel):
-    """Output schema from Gemini/Groq AI analysis."""
+    """Output schema from Gemini AI analysis."""
     title_ar: str = ""
     summary: str = ""
     category: str = "local_algeria"
@@ -226,8 +226,8 @@ class PaginatedResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.0.0"
-    database: str = "connected"
+    version: str = "1.1.0"
+    database: str = "unknown"
     redis: str = "connected"
     uptime_seconds: float = 0
 
@@ -257,6 +257,19 @@ class SettingsAuditResponse(BaseModel):
     new_value: Optional[str] = None
     actor: Optional[str] = None
     created_at: Optional[datetime] = None
+
+
+from app.schemas.mil import (  # noqa: E402
+    MILAnalyzeRecentRequest,
+    MILClusterSummary,
+    MILDismissRequest,
+    MILEntitySummary,
+    MILSignalDetail,
+    MILSignalExplanation,
+    MILSignalListItem,
+    MILSignalPayload,
+    MILTodayCard,
+)
 
 
 class ConstitutionMetaResponse(BaseModel):

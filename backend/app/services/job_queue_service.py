@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import desc, select
+from sqlalchemy import and_, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -31,6 +32,17 @@ QUEUE_LIMITS = {
     "ai_scripts": settings.queue_depth_limit_scripts,
 }
 
+QUEUE_SLA_TARGETS = {
+    "ai_router": settings.queue_sla_target_minutes_router,
+    "ai_scribe": settings.queue_sla_target_minutes_scribe,
+    "ai_quality": settings.queue_sla_target_minutes_quality,
+    "ai_simulator": settings.queue_sla_target_minutes_simulator,
+    "ai_msi": settings.queue_sla_target_minutes_msi,
+    "ai_links": settings.queue_sla_target_minutes_links,
+    "ai_trends": settings.queue_sla_target_minutes_trends,
+    "ai_scripts": settings.queue_sla_target_minutes_scripts,
+}
+
 JOB_TASK_MAP: dict[str, tuple[str, str]] = {
     "msi_run": ("app.queue.tasks.pipeline_tasks.run_msi_job", "ai_msi"),
     "simulator_run": ("app.queue.tasks.pipeline_tasks.run_simulator_job", "ai_simulator"),
@@ -48,8 +60,10 @@ JOB_TASK_MAP: dict[str, tuple[str, str]] = {
     "pipeline_scribe": ("app.queue.tasks.pipeline_tasks.run_scribe_batch", "ai_scribe"),
     "trends_scan": ("app.queue.tasks.pipeline_tasks.run_trends_scan", "ai_trends"),
     "published_monitor_scan": ("app.queue.tasks.pipeline_tasks.run_published_monitor_scan", "ai_quality"),
+    "mil_analyze_recent": ("app.queue.tasks.pipeline_tasks.run_mil_analyze_recent", "ai_quality"),
     "document_intel_extract": ("app.queue.tasks.pipeline_tasks.run_document_intel_extract_job", "ai_quality"),
     "script_generate": ("app.queue.tasks.pipeline_tasks.run_script_generate_job", "ai_scripts"),
+    "echorouk_archive_backfill": ("app.queue.tasks.pipeline_tasks.run_echorouk_archive_backfill", "ai_scripts"),
 }
 
 
@@ -71,8 +85,56 @@ class JobQueueService:
         if not settings.queue_backpressure_enabled:
             return True, 0, 0
         depth = await self.queue_depth(queue_name)
-        limit = QUEUE_LIMITS.get(queue_name, settings.queue_depth_limit_default)
+        limit = self.queue_depth_limit(queue_name)
         return depth < limit, depth, limit
+
+    def queue_depth_limit(self, queue_name: str) -> int:
+        return int(QUEUE_LIMITS.get(queue_name, settings.queue_depth_limit_default))
+
+    def queue_sla_target_minutes(self, queue_name: str) -> int:
+        return int(QUEUE_SLA_TARGETS.get(queue_name, settings.queue_sla_target_minutes_default))
+
+    def build_backpressure_detail(
+        self,
+        *,
+        queue_name: str,
+        current_depth: int,
+        depth_limit: int,
+        retry_after_seconds: int | None = None,
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        retry_after = int(retry_after_seconds or settings.queue_backpressure_retry_after_seconds)
+        detail: dict[str, Any] = {
+            "queue_name": queue_name,
+            "current_depth": int(current_depth),
+            "depth_limit": int(depth_limit),
+            "retry_after_seconds": max(1, retry_after),
+        }
+        if message:
+            detail["message"] = message
+        return detail
+
+    def backpressure_exception(
+        self,
+        *,
+        queue_name: str,
+        current_depth: int,
+        depth_limit: int,
+        retry_after_seconds: int | None = None,
+        message: str | None = None,
+    ) -> HTTPException:
+        detail = self.build_backpressure_detail(
+            queue_name=queue_name,
+            current_depth=current_depth,
+            depth_limit=depth_limit,
+            retry_after_seconds=retry_after_seconds,
+            message=message,
+        )
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            headers={"Retry-After": str(detail["retry_after_seconds"])},
+        )
 
     async def create_job(
         self,
@@ -227,6 +289,167 @@ class JobQueueService:
             except Exception:  # noqa: BLE001
                 depths[queue_name] = -1
         return depths
+
+    async def queue_sla_overview(self, db: AsyncSession, *, lookback_hours: int = 24) -> dict[str, Any]:
+        window_hours = max(1, min(int(lookback_hours), 168))
+        window_start = datetime.utcnow() - timedelta(hours=window_hours)
+        stale_timeout_failed = and_(
+            JobRun.status == "failed",
+            JobRun.error.is_not(None),
+            JobRun.error.ilike("stale_timeout:%"),
+        )
+
+        runtime_rows = await db.execute(
+            select(
+                JobRun.queue_name,
+                func.avg(
+                    case(
+                        (
+                            JobRun.status == "completed",
+                            func.extract("epoch", JobRun.finished_at - JobRun.started_at),
+                        ),
+                        else_=None,
+                    )
+                ).label("avg_runtime_seconds"),
+                func.sum(case((stale_timeout_failed, 0), else_=1)).label("finished_count"),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                JobRun.status.in_(("failed", "dead_lettered")),
+                                ~stale_timeout_failed,
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("failed_count"),
+                func.sum(case((stale_timeout_failed, 1), else_=0)).label("stale_excluded_count"),
+            )
+            .where(
+                JobRun.status.in_(("completed", "failed", "dead_lettered")),
+                JobRun.finished_at.is_not(None),
+                JobRun.finished_at >= window_start,
+            )
+            .group_by(JobRun.queue_name)
+        )
+        runtime_by_queue: dict[str, dict[str, float]] = {}
+        for queue_name, avg_runtime_seconds, finished_count, failed_count, stale_excluded_count in runtime_rows.all():
+            finished = int(finished_count or 0)
+            failed = int(failed_count or 0)
+            stale_excluded = int(stale_excluded_count or 0)
+            failure_rate = round((failed / finished) * 100.0, 2) if finished else 0.0
+            mean_runtime_minutes = round((float(avg_runtime_seconds or 0.0) / 60.0), 2)
+            runtime_by_queue[str(queue_name)] = {
+                "mean_runtime": mean_runtime_minutes,
+                "failure_rate_24h": failure_rate,
+                "stale_failures_excluded_24h": float(stale_excluded),
+            }
+
+        running_rows = await db.execute(
+            select(
+                JobRun.queue_name,
+                func.count(JobRun.id).label("running_count"),
+                func.min(func.coalesce(JobRun.started_at, JobRun.queued_at)).label("oldest_running_at"),
+            )
+            .where(
+                JobRun.status == "running",
+                JobRun.finished_at.is_(None),
+            )
+            .group_by(JobRun.queue_name)
+        )
+        queued_rows = await db.execute(
+            select(
+                JobRun.queue_name,
+                func.count(JobRun.id).label("queued_count"),
+                func.min(JobRun.queued_at).label("oldest_queued_at"),
+            )
+            .where(
+                JobRun.status == "queued",
+                JobRun.finished_at.is_(None),
+            )
+            .group_by(JobRun.queue_name)
+        )
+
+        now = datetime.utcnow()
+        running_by_queue: dict[str, dict[str, float]] = {}
+        for queue_name, running_count, oldest_running_at in running_rows.all():
+            age_minutes = 0.0
+            if oldest_running_at:
+                age_minutes = max(0.0, (now - oldest_running_at).total_seconds() / 60.0)
+            running_by_queue[str(queue_name)] = {
+                "count": int(running_count or 0),
+                "oldest_age": round(age_minutes, 2),
+            }
+
+        queued_by_queue: dict[str, dict[str, float]] = {}
+        for queue_name, queued_count, oldest_queued_at in queued_rows.all():
+            age_minutes = 0.0
+            if oldest_queued_at:
+                age_minutes = max(0.0, (now - oldest_queued_at).total_seconds() / 60.0)
+            queued_by_queue[str(queue_name)] = {
+                "count": int(queued_count or 0),
+                "oldest_age": round(age_minutes, 2),
+            }
+
+        depths = await self.queue_depths()
+        queue_names = sorted(set(depths.keys()) | set(runtime_by_queue.keys()) | set(running_by_queue.keys()) | set(queued_by_queue.keys()))
+        failure_threshold = float(settings.queue_sla_failure_rate_threshold_percent)
+        items: list[dict[str, Any]] = []
+        for queue_name in queue_names:
+            depth = int(depths.get(queue_name, 0))
+            depth_limit = self.queue_depth_limit(queue_name)
+            running_stats = running_by_queue.get(queue_name, {})
+            queued_stats = queued_by_queue.get(queue_name, {})
+            running_count = int(running_stats.get("count", 0))
+            queued_count = int(queued_stats.get("count", 0))
+            oldest_running_age = float(running_stats.get("oldest_age", 0.0))
+            oldest_queued_age = float(queued_stats.get("oldest_age", 0.0))
+
+            # If Redis depth is zero, queued rows in DB often indicate stale state.
+            # In that case we only use running age, because queued-age SLA should track
+            # real backlog pressure from Redis.
+            if depth > 0:
+                oldest_task_age = round(max(oldest_queued_age, oldest_running_age), 2)
+            elif running_count > 0:
+                oldest_task_age = round(oldest_running_age, 2)
+            else:
+                oldest_task_age = 0.0
+
+            state_drift_suspected = depth == 0 and queued_count > 0
+            runtime_stats = runtime_by_queue.get(queue_name, {})
+            mean_runtime = float(runtime_stats.get("mean_runtime", 0.0))
+            failure_rate_24h = float(runtime_stats.get("failure_rate_24h", 0.0))
+            stale_failures_excluded_24h = int(runtime_stats.get("stale_failures_excluded_24h", 0.0))
+            sla_target_minutes = self.queue_sla_target_minutes(queue_name)
+            depth_breach = depth >= depth_limit
+            age_breach = oldest_task_age > sla_target_minutes
+            runtime_breach = mean_runtime > sla_target_minutes
+            failure_breach = failure_rate_24h >= failure_threshold
+            sla_breached = depth_breach or age_breach or runtime_breach or failure_breach
+            items.append(
+                {
+                    "queue_name": queue_name,
+                    "depth": depth,
+                    "depth_limit": depth_limit,
+                    "oldest_task_age": oldest_task_age,
+                    "mean_runtime": mean_runtime,
+                    "failure_rate_24h": failure_rate_24h,
+                    "stale_failures_excluded_24h": stale_failures_excluded_24h,
+                    "SLA_target_minutes": sla_target_minutes,
+                    "SLA_breached": sla_breached,
+                    "active_running_jobs": running_count,
+                    "active_queued_jobs": queued_count,
+                    "state_drift_suspected": state_drift_suspected,
+                }
+            )
+
+        return {
+            "generated_at": datetime.utcnow().isoformat(),
+            "lookback_hours": window_hours,
+            "failure_rate_threshold_percent": failure_threshold,
+            "queues": items,
+        }
 
     async def mark_running(self, db: AsyncSession, job: JobRun) -> None:
         job.status = "running"

@@ -1,102 +1,252 @@
-# Echorouk Editorial OS — الملف المرجعي الشامل للمنصة
+﻿# المرجع الشامل للمنصة — Echorouk Editorial OS
 
-> آخر تحديث: 2026-03-03  
-> هذا الملف هو مرجع واحد يجمع الصورة الكاملة للمنصة: المنتج، المعمارية، الوحدات، الحوكمة، التشغيل، والسياسات الزمنية.
+آخر تحديث: 2026-03-17
 
-## 1) تعريف المنصة
+## 1. ما هي المنصة؟
 
-**Echorouk Editorial OS** هو نظام تشغيل تحريري (Newsroom Operating System) لإدارة دورة الخبر من الالتقاط حتى **جاهز للنشر اليدوي** مع:
+`Echorouk Editorial OS` هي منصة تشغيل تحريرية كاملة لغرفة الأخبار.
+هي لا تعمل كأداة ذكاء اصطناعي مستقلة، ولا كـ CMS، ولا كنظام نشر تلقائي؛ بل كنظام يربط بين:
 
-- Human-in-the-Loop إلزامي.
-- حوكمة تحريرية صارمة.
-- RBAC واضح حسب الدور.
-- أتمتة ذكية في الالتقاط/التصنيف/الصياغة.
-- أدوات مساعدة داخل غرفة التحرير (تحقق، جودة، SEO، سوشيال، ذاكرة مشروع، محاكاة جمهور، إلخ).
+- الالتقاط والمتابعة
+- التصنيف والتوجيه
+- توليد المسودة الأولى
+- التحرير والمراجعة
+- التحقق والجودة
+- الاعتماد التحريري
+- الجاهزية للنشر اليدوي
+- التغطية الرقمية والمتابعة بعد النشر
 
-المنصة **ليست CMS للنشر التلقائي**.  
-المخرجات النهائية تصل إلى `ready_for_manual_publish` ثم يتم النشر يدويًا خارج النظام.
+الفكرة الأساسية في المنصة هي أن المادة الصحفية لا تمر كملف نصي فقط، بل ككيان تحريري له:
 
----
+- حالة واضحة
+- مسؤول واضح
+- خطوة تالية واضحة
+- أثر تدقيقي واضح
+- تاريخ قرارات واضح
 
-## 2) الهدف التشغيلي
+## 2. ما الذي ليست عليه المنصة؟
 
-- تسريع دورة الخبر بدون فقدان الضبط التحريري.
-- منع الهلوسة والانحراف عبر بوابات جودة + تدقيق ادعاءات + سياسة تحريرية.
-- بناء غرفة أخبار قابلة للقياس (latency, queue depth, quality score, rejection causes).
-- حماية القاعة من الأخبار القديمة أو غير المؤرخة بسياسة freshness صارمة.
+هذه المنصة ليست:
 
----
+- مولد مقالات تلقائي للنشر المباشر
+- نظام نشر CMS نهائي
+- روبوت دردشة عام
+- أداة ذكاء اصطناعي تكتب بدل الصحفي
+- لوحة تحكم إدارية فقط
 
-## 3) المعمارية التقنية (High-Level)
+المنصة تساعد في البناء والتحرير والتحقق، لكنها تبقي القرار التحريري النهائي بيد الإنسان.
 
-### 3.1 طبقات النظام
+## 3. الهدف التشغيلي
 
-- `Frontend`: Next.js (App Router) + React Query + TipTap.
-- `Backend`: FastAPI + SQLAlchemy + Pydantic.
-- `Data`: PostgreSQL (مع `pgvector`) + Redis.
-- `Storage`: MinIO.
-- `Async`: Celery workers + Redis broker/backend.
-- `Feeds`: FreshRSS + RSS-Bridge (اختياري/موصى به للتوحيد).
+الأهداف التي بُنيت عليها المنصة:
 
-### 3.2 خدمات Docker الرئيسية
+- تسريع انتقال الخبر من الإشارة إلى مسودة قابلة للتحرير
+- تقليل الهدر التحريري الناتج عن الفوضى والتكرار وضعف السياق
+- فرض Human-in-the-Loop في نقاط القرار الحساسة
+- رفع جودة المادة قبل الاعتماد النهائي
+- جعل غرفة الأخبار قابلة للتتبع والقياس
+- دعم العمل اليومي للصحفي ورئيس التحرير دون إرهاقهما بواجهات تقنية ثقيلة
 
-- `ech-backend` (API)
-- `ech-worker` (Celery worker)
-- `ech-flower` (queue monitoring)
-- `ech-frontend`
-- `ech-postgres`
-- `ech-redis`
-- `ech-minio`
-- `ech-freshrss-db` + `ech-freshrss`
-- `ech-rssbridge`
+## 4. المبادئ الحاكمة
 
-### 3.3 المنافذ الافتراضية
+### 4.1 القرار النهائي بشري
+الذكاء الاصطناعي يلتقط ويقترح ويساعد ويتحقق، لكنه لا يعتمد ولا ينشر تلقائيًا.
 
-- Backend API: `8000`
-- Frontend: `3000`
-- Flower: `5555`
-- PostgreSQL: `5433 -> 5432`
-- Redis: `6380 -> 6379`
-- MinIO API/Console: `9000/9001`
-- FreshRSS: `8082`
-- RSS-Bridge: `8083`
+### 4.2 كل مادة تمر بمسار واضح
+لا توجد مادة “تطفو” خارج المسار. لكل مادة حالة ومكان ودور مسؤول عنها.
 
----
+### 4.3 التبسيط في السطح، لا في القدرة
+تم تبسيط الواجهات اليومية، لكن لم يتم حذف القدرات المهنية مثل:
 
-## 4) بنية المشروع (مختصرة وعملية)
+- diff / restore / history
+- publish readiness gate
+- chief approval
+- archive + RAG
+- telemetry
 
-- `backend/app/agents/`: منطق الوكلاء (Scout/Router/Scribe/Trend/...).
-- `backend/app/api/routes/`: REST API domains.
-- `backend/app/services/`: orchestration وخدمات الأعمال.
-- `backend/app/domain/`: state machine + quality gates.
-- `backend/app/repositories/`: data access patterns.
-- `backend/app/models/`: SQLAlchemy tables/enums.
-- `backend/app/queue/`: Celery app + background tasks.
-- `frontend/src/app/`: صفحات النظام.
-- `frontend/src/components/`: مكونات الواجهة المشتركة.
-- `alembic/versions/`: migrations.
-- `docs/`: مرجع التشغيل والتصميم.
+### 4.4 اليوميات حسب الدور
+الصحفي يبدأ من العمل، لا من الاستكشاف.
+رئيس التحرير يبدأ من القرار، لا من تفكيك النظام.
 
----
+### 4.5 الأدوات المتقدمة عند الحاجة
+الأدوات العميقة تبقى موجودة، لكن لا تظهر في السطح الأول إلا في سياقها المناسب.
 
-## 5) دورة الخبر (Workflow الرسمي)
+## 5. الأدوار داخل المنصة
 
-### 5.1 المسار الأساسي
+### 5.1 الصحفي
+يرى أساسًا:
 
-1. التقاط الخبر (Scout).
-2. تنظيف/تصنيف/توجيه (Router).
-3. إدخال الخبر كمرشح (`candidate`) أو تصنيف عادي.
-4. تحرير داخل Smart Editor + أدوات AI.
-5. تشغيل بوابات الجودة والتحقق والسياسة.
-6. إرسال لرئيس التحرير.
-7. قرار نهائي:
-   - اعتماد نهائي -> `ready_for_manual_publish`
-   - إعادة/رفض مع سبب.
-8. النشر اليدوي خارج النظام.
+- `Today`
+- `News`
+- `Workspace Drafts`
+- `Stories`
+- `Events`
+- `Archive`
+- الأدوات المساندة عند الحاجة
 
-### 5.2 حالات الخبر (`NewsStatus`)
+مسؤوليته الأساسية:
 
-القيم الفعلية في `backend/app/models/news.py`:
+- استلام المادة أو اختيارها
+- كتابة المسودة أو تطويرها
+- مراجعة النص
+- إرسال المادة للاعتماد
+
+### 5.2 رئيس التحرير
+يرى أساسًا:
+
+- `Today`
+- `Editorial`
+- `News`
+- `Stories`
+- `Events`
+- `Archive`
+- `UX Insights`
+- بعض أسطح الأداء والاختناقات
+
+مسؤوليته الأساسية:
+
+- اتخاذ القرار النهائي
+- إعادة المادة للمراجعة عند الحاجة
+- مراقبة الاختناقات والمتأخرات
+- التأكد من جاهزية ما سيذهب للنشر اليدوي
+
+### 5.3 المدير
+يرى الأسطح الإدارية الأوسع، مثل:
+
+- الأداء العام
+- المصادر
+- مراقبة النظام
+- إعدادات APIs
+- فريق التحرير
+- سلوك الاستخدام
+
+### 5.4 أدوار أخرى
+مثل:
+
+- `social_media`
+- `print_editor`
+- `fact_checker`
+- `observer`
+
+وتظهر لهم فقط الأسطح التي تناسب مسؤولياتهم الحالية.
+
+## 6. البنية المعلوماتية الحالية للواجهة
+
+بعد أعمال التبسيط الأخيرة، أصبحت المنصة أقرب إلى هذا التصور:
+
+### 6.1 اليوم
+المدخل اليومي حسب الدور.
+يعرض:
+
+- ما دخل نطاق المستخدم الآن
+- لماذا ظهر له
+- ما الإجراء التالي
+- ما الذي يحتاج انتباهًا
+
+### 6.2 العمل الجاري
+يشمل الأسطح التي تتحرك فيها المادة أثناء التنفيذ:
+
+- `News`
+- `Workspace Drafts`
+- `Stories`
+- `Events`
+
+### 6.3 الاعتماد والمتابعة
+ويشمل:
+
+- `Editorial`
+- الجاهز للنشر اليدوي
+- المواد العائدة
+- التحفظات
+
+### 6.4 المعرفة المساندة
+ويشمل:
+
+- `Archive`
+- `Memory`
+- `Document Intel`
+- `Media Logger`
+
+### 6.5 الأدوات المتقدمة
+ويشمل:
+
+- `Digital`
+- `Trends`
+- `Simulator`
+- `Competitor X-Ray`
+- `Scripts`
+- `UX Insights`
+- أسطح الإدارة والتشغيل
+
+## 7. المسار التحريري الأساسي
+
+المسار الأساسي للمادة داخل المنصة هو:
+
+`Scout -> Router -> Scribe -> Smart Editor -> Quality Gates -> Chief Approval -> Ready for Manual Publish`
+
+### 7.1 Scout
+وظيفته:
+
+- التقاط الإشارات والمصادر
+- تنظيف المدخلات
+- إزالة التكرار
+- استبعاد العناصر غير المناسبة أو القديمة
+
+لا يكتب المادة، بل يضمن أن ما يدخل المنصة قابل للمعالجة.
+
+### 7.2 Router
+وظيفته:
+
+- فهم المادة
+- تصنيفها
+- تحديد الأولوية
+- تحديد إن كانت مرشحة للتحرير
+- توجيهها إلى المسار المناسب
+
+### 7.3 Scribe
+وظيفته:
+
+- توليد مسودة أولية قابلة للتحرير
+- تسريع نقطة البداية للصحفي
+- الاستفادة من السياق المتاح والأرشيف عند الحاجة
+
+### 7.4 Smart Editor
+وهو مساحة التحرير الفعلية.
+فيه تتم:
+
+- كتابة النص وتحريره
+- اقتراح العناوين
+- المراجعة اللغوية والأسلوبية
+- إدارة النسخ والتاريخ
+- تجهيز المادة للمرحلة التالية
+
+### 7.5 Quality Gates
+وهي بوابات التحقق والجودة قبل الإرسال للاعتماد.
+تتأكد من:
+
+- الاتساق
+- الوضوح
+- التحقق من الادعاءات
+- الحد الأدنى من الجاهزية للنشر
+
+### 7.6 Chief Approval
+المرحلة التي يصل فيها الطلب إلى رئيس التحرير لاتخاذ القرار:
+
+- اعتماد
+- إرجاع للمراجعة
+- اعتماد بتحفظات
+
+### 7.7 Ready for Manual Publish
+إذا اجتازت المادة التحرير والبوابات والاعتماد، تصبح:
+
+- جاهزة للتسليم
+- جاهزة للنشر اليدوي
+
+المنصة لا تنشر تلقائيًا على الـ CMS.
+
+## 8. دورة الحالات التحريرية
+
+الحالات الأساسية في النظام حاليًا مشتقة من `NewsStatus`، وأهمها:
 
 - `new`
 - `cleaned`
@@ -109,588 +259,321 @@
 - `ready_for_chief_approval`
 - `approval_request_with_reservations`
 - `ready_for_manual_publish`
-- `rejected`
 - `published`
+- `rejected`
 - `archived`
 
----
+### 8.1 المعنى العملي للحالات اليومية
 
-## 6) الوكلاء (Agents) وخط الإنتاج الآلي
+#### `candidate`
+مادة أصبحت مرشحة فعليًا للدخول في المسار التحريري.
 
-### 6.1 Scout Agent
+#### `draft_generated`
+تم تجهيز مسودة أولية يمكن العمل عليها داخل المحرر.
 
-- الملف: `backend/app/agents/scout.py`
-- الوظيفة: ingestion + dedup + freshness filtering.
-- يدعم:
-  - مصادر مباشرة RSS/Scraper.
-  - FreshRSS feed موحد عند تفعيل `SCOUT_USE_FRESHRSS`.
-- dedup متعدد الطبقات:
-  - unique hash
-  - URL-level dedup
-  - fuzzy title dedup
-  - cross-source dedup
+#### `ready_for_chief_approval`
+المادة جاهزة للوصول إلى رئيس التحرير.
 
-### 6.2 Router Agent
+#### `approval_request_with_reservations`
+المادة قابلة للتقدم لكن مع ملاحظات أو تحفظات.
 
-- التصنيف (category/urgency/breaking).
-- مزيج rules + AI fallback.
-- يحدد ما يدخل إلى `candidate`.
+#### `ready_for_manual_publish`
+المادة اجتازت المسار التحريري وصارت جاهزة للتسليم اليدوي للنشر.
 
-### 6.3 Scribe Agent
+#### `published`
+المادة نُشرت أو تم تعليمها كمنشورة.
 
-- إعادة صياغة وصناعة draft قابل للتحرير.
-- fallback provider routing (Groq/Gemini) حسب الصحة والتوفر.
+#### `archived`
+المادة خرجت من المسار الجاري إلى الأرشفة.
 
-### 6.4 Trend / Monitor / Other Jobs
+## 9. تجربة المستخدم الحالية بعد التبسيط
 
-- Trend radar scans.
-- Published content monitor.
-- MSI jobs.
-- Audience simulator jobs.
-- Script generation jobs.
-- Document intelligence extract jobs.
+## 9.1 Today
+أصبحت `Today` نقطة الدخول اليومية الأساسية.
 
----
+تعرض:
 
-## 7) API Domains (الخريطة الكاملة)
+- ما دخل نطاقك الآن
+- ما الخطوة التالية
+- ما الذي يعيق التقدم
+- لماذا ترى هذه المادة الآن
 
-جميعها تحت `/api/v1`:
+## 9.2 News
+تحولت إلى `Queue-first newsroom` بدل جدول إداري ثقيل.
 
-- `/auth` المصادقة والعضوية.
-- `/news` الأخبار والبحث/العلاقات.
-- `/editorial` دورة التحرير + Smart Editor + chief decisions.
-- `/dashboard` إحصاءات + تشغيل الوكلاء + تشغيلية.
-- `/sources` إدارة المصادر + policy + health/apply.
-- `/rss` ربط مصادر RSS bridge.
-- `/settings` إعدادات API + audit.
-- `/constitution` الدستور التحريري + acknowledgment.
-- `/services` أدوات الصحفي (editor/seo/fact-check/multimedia).
-- `/memory` ذاكرة المشروع.
-- `/msi` مؤشر MSI.
-- `/sim` محاكي الجمهور.
-- `/media-logger` تفريغ/تحليل وسائط.
-- `/document-intel` استخراج محتوى الوثائق.
-- `/competitor-xray` مراقبة المنافسين.
-- `/jobs` job status/retry/queues/dead-letter/providers.
-- `/stories` إدارة القصص التحريرية.
-- `/scripts` Script Studio.
-- `/events` مفكرة الأحداث.
-- `/digital` عمليات فريق الديجيتال.
+بطاقة الخبر اليوم تعرض مختصرًا:
 
----
+- العنوان
+- المصدر
+- الكاتب
+- الأهمية
+- الإجراء
 
-## 8) وحدات الواجهة (Frontend Modules)
+مع أزرار أساسية فقط:
 
-الصفحات الأساسية في `frontend/src/app/`:
+- `المصدر`
+- `التفاصيل`
+- `التحرير`
 
-- `/` لوحة القيادة.
-- `/news` و `/news/[id]`.
-- `/editorial`.
-- `/workspace-drafts` (Smart Editor Workspace).
-- `/trends`.
-- `/stories`.
-- `/scripts`.
-- `/events`.
-- `/digital`.
-- `/msi`.
-- `/simulator`.
-- `/competitor-xray`.
-- `/memory`.
-- `/services/multimedia`.
-- `/services/fact-check`.
-- `/services/media-logger`.
-- `/services/document-intel`.
-- `/sources` (مدير).
-- `/agents` (مدير).
-- `/team` (مدير).
-- `/settings` (مدير).
+## 9.3 Workspace Drafts
+تم تبسيط المحرر إلى مراحل واضحة:
 
----
+### مرحلة الكتابة
+السطح الأول الهادئ للصحفي.
+يركز على:
 
-## 9) RBAC (الأدوار والصلاحيات)
+- النص
+- الحفظ
+- إنهاء الكتابة
 
-الأدوار الرسمية في backend (`UserRole`):
+### مرحلة المراجعة
+تظهر بعد الانتقال من الكتابة.
+وفيها:
 
-- `director`
-- `editor_chief`
-- `journalist`
-- `social_media`
-- `print_editor`
+- الخطوة التالية
+- الفحص والتحقق
+- الجاهزية
+- الإرسال للاعتماد
 
-### 9.1 صلاحيات عملية
+كما تم نقل الكثير من الأدوات الثانوية إلى طبقات مطوية أو مودالات حتى لا يضيع الصحفي.
 
-- `director`: صلاحيات كاملة (النظام/العضوية/المصادر/الإعدادات/المراقبة).
-- `editor_chief`: اعتماد نهائي، إدارة التدفق التحريري.
-- `journalist`: تحرير، ترشيح، أدوات AI، إرسال للمراجعة.
-- `social_media`: إدارة مخرجات الديجيتال والسوشيال حسب القنوات.
-- `print_editor`: دور تحريري قريب من الصحفي في workflow.
+## 9.4 Editorial
+أعيد تنظيمه إلى طوابير مفهومة:
 
-> ملاحظة تقنية: بعض شاشات الواجهة تحتوي role إضافي (`fact_checker`) لأغراض عرض/وصول، لكنه ليس ضمن enum backend الرسمي الحالي.
+- بانتظار الاعتماد
+- عاد للمراجعة
+- بتحفظات
+- جاهز للنشر اليدوي
 
----
+## 9.5 Stories
+أصبح طبقة متابعة تحريرية لا مركز تحكم ثقيل.
+ويعرض مثلًا:
 
-## 10) نموذج البيانات (Data Model)
+- قصص نشطة
+- تحتاج تحديثًا
+- فقدت الزخم
+- تحتاج زاوية جديدة
 
-### 10.1 الجداول الجوهرية
+## 9.6 Digital
+تم تحويله إلى أوضاع تشغيلية:
+
+- `Execute`
+- `Compose`
+- `Planning`
+
+مع:
+
+- `Now / Next / At Risk`
+- `Next Best Action`
+- explainability
+- versioning
+- bundle generation
+- delivery layer
+
+## 10. الوحدات الرئيسية في المنصة
+
+### 10.1 Newsroom Core
+يشمل:
+
+- Scout
+- Router
+- Scribe
+- News Queue
+- Draft Workspace
+- Chief Approval
+
+### 10.2 Smart Editor & Quality
+يشمل:
+
+- التحرير
+- الفحص السريع
+- التدقيق
+- التحقق
+- الجودة
+- الجاهزية للنشر
+- النسخ والتاريخ
+
+### 10.3 Stories Layer
+لإدارة القصص طويلة المتابعة وتراكم الزوايا والسياق.
+
+### 10.4 Events Desk
+لإدارة التغطيات الزمنية والأحداث والنوافذ التحضيرية والجاهزية.
+
+### 10.5 Digital Desk
+لتشغيل التغطية الرقمية، والمنشورات، والنسخ، والجدولة، والحِزم الرقمية.
+
+### 10.6 Archive + RAG
+للبحث والاسترجاع والسياق التحريري.
+
+### 10.7 Competitor / Trends / Simulator / MSI
+طبقات تحليلية أو مساندة تساعد في اتخاذ القرار والتحسين، لكنها ليست السطح الأول لكل المستخدمين.
+
+### 10.8 Published Monitor
+يراقب الجودة بعد النشر عبر RSS feed وتحليلات داخلية وتنبيهات.
+
+### 10.9 UX Telemetry
+تقيس كيف يستخدم الفريق المنصة بعد التبسيط، مثل:
+
+- من أين يبدأ المستخدم؟
+- هل يستخدم `Today`؟
+- هل يضغط `Next Action`؟
+- أين يوجد drop-off؟
+
+## 11. الصفحات المهمة حاليًا
+
+الصفحات الأساسية في الواجهة الحالية:
+
+- `/today`
+- `/news`
+- `/workspace-drafts`
+- `/editorial`
+- `/stories`
+- `/events`
+- `/digital`
+- `/archive`
+- `/memory`
+- `/constitution`
+- `/how-editorial-os-works`
+- `/newsroom-flow`
+- `/prompt-playbook`
+- `/ux-insights`
+
+وصفحات مساندة أو متقدمة:
+
+- `/trends`
+- `/simulator`
+- `/competitor-xray`
+- `/scripts`
+- `/services/document-intel`
+- `/services/media-logger`
+- `/services/multimedia`
+- `/services/fact-check`
+- `/sources`
+- `/agents`
+- `/settings`
+- `/team`
+
+## 12. البنية التقنية
+
+### 12.1 Frontend
+- `Next.js 16`
+- `React`
+- `TypeScript`
+- `Tailwind`
+
+### 12.2 Backend
+- `FastAPI`
+- `SQLAlchemy`
+- `Pydantic`
+- `Alembic`
+
+### 12.3 Data & Infra
+- `PostgreSQL`
+- `pgvector`
+- `Redis`
+- `Celery`
+- `MinIO`
+- `FreshRSS`
+- `RSS-Bridge`
+
+### 12.4 نقاط التشغيل الافتراضية
+- Backend: `8000`
+- Frontend: `3000`
+- Postgres: `5433`
+- Redis: `6380`
+- MinIO: `9000/9001`
+
+## 13. أهم جداول البيانات المفهومية
+
+على المستوى المفهومي، النظام يعتمد أساسًا على:
 
 - `articles`
 - `sources`
-- `editorial_drafts`
 - `editor_decisions`
-- `article_quality_reports`
-- `pipeline_runs`
-- `failed_jobs`
-- `users`
-- `user_activity_logs`
-- `api_settings`
-- `settings_audit`
-- `action_audit_logs`
+- جداول الأرشيف الدلالي مثل `article_chunks`, `article_vectors`, `article_profiles`
+- جداول التغطية الرقمية مثل:
+  - `digital_team_scopes`
+  - `program_slots`
+  - `social_tasks`
+  - `social_posts`
+  - `social_post_versions`
+- سجلات التدقيق والحركة مثل `action_audit_logs`
 
-### 10.2 نطاق القصص والسكريبت
+## 14. المبادئ التطويرية لما تبقى من الخصائص
 
-- `stories`, `story_items`
-- `script_projects`, `script_outputs`
+إذا أردنا تطوير خصائص جديدة، فهناك قواعد يجب الحفاظ عليها:
 
-### 10.3 نطاق الذكاء المعرفي والروابط
+### 14.1 لا نضيف سطحًا أوليًا جديدًا قبل إثبات الحاجة
+أي خاصية جديدة يجب أن تسأل أولًا:
 
-- `article_profiles`, `article_topics`, `article_entities`
-- `article_chunks`, `article_vectors`, `article_fingerprints`, `article_relations`
-- `story_clusters`, `story_cluster_members`
-- `link_index_items`, `trusted_domains`, `link_recommendation_runs`, `link_recommendation_items`, `link_click_events`
+- هل هي صفحة مستقلة حقًا؟
+- أم أداة سياقية داخل صفحة قائمة؟
 
-### 10.4 نطاق الوحدات المتقدمة
+### 14.2 لا نكسر المسار التحريري
+أي تطوير يجب أن يحترم:
 
-- MSI: `msi_runs`, `msi_reports`, `msi_timeseries`, `msi_watchlist`, ...
-- Simulator: `sim_runs`, `sim_results`, `sim_feedback`, ...
-- Competitor X-Ray: `competitor_xray_sources`, `competitor_xray_runs`, ...
-- Media Logger: `media_logger_runs`, `media_logger_segments`, ...
-- Events/Digital: `event_memo_items`, `digital_team_scopes`, `program_slots`, `social_tasks`, `social_posts`
+- الحالات
+- الحوكمة
+- الاعتماد البشري
+- readiness gates
 
----
+### 14.3 Next Action أولًا
+أي واجهة جديدة يفضّل أن تعرض:
 
-## 11) Queue & Async Architecture
+- لماذا أنا هنا؟
+- ما الخطوة التالية؟
+- ما الذي يمنعني؟
 
-### 11.1 Celery routing
+### 14.4 لا ننقل التعقيد إلى الصحفي
+الأدوات الثقيلة يجب أن تكون:
 
-الصفوف الفعلية:
+- مطوية
+- اختيارية
+- أو في مرحلة لاحقة من المسار
 
-- `ai_router`
-- `ai_scribe`
-- `ai_quality`
-- `ai_simulator`
-- `ai_msi`
-- `ai_links`
-- `ai_trends`
-- `ai_scripts`
+### 14.5 التطوير يجب أن يكون role-aware
+كل صفحة جديدة أو تحسين جديد يجب أن يجيب:
 
-### 11.2 المبادئ التشغيلية
+- ماذا يرى الصحفي؟
+- ماذا يرى رئيس التحرير؟
+- ماذا يرى المدير؟
 
-- Enqueue-only endpoints للعمليات الثقيلة.
-- Backpressure قبل enqueue.
-- Idempotency عبر `task_idempotency_keys`.
-- DLQ عبر `dead_letter_jobs`.
-- تتبع `request_id` + `correlation_id` من API حتى worker logs.
+## 15. الأولويات التطويرية المتبقية
 
----
+بعد أعمال التبسيط الحالية، الأولويات المنطقية القادمة هي:
 
-## 12) الحوكمة التحريرية والـ Quality Gates
+1. تحسين `Workspace Drafts` أكثر حول الكتابة ثم المراجعة
+2. مواصلة توحيد لغة الحالات والأزرار عبر كل الأسطح
+3. تعميق `Today` أكثر كـ orchestrator فعلي للمسار التحريري
+4. تحسين `Events` و`Digital` بنفس منطق `reason + next action`
+5. تحسين الربط بين القصة والخبر والتغطية والديجيتال
+6. استخدام `UX Insights` لاتخاذ قرارات تخفيف إضافية في الواجهات
+7. تعزيز الوثائق والتدريب داخل المنصة نفسها
 
-### 12.1 بوابات الجودة النشطة
+## 16. ماذا يجب أن يعرف أي مطوّر جديد قبل لمس الكود؟
 
-- `FACT_CHECK`
-- `SEO_TECH`
-- `READABILITY`
-- `QUALITY_SCORE`
-- `EDITORIAL_POLICY` (عند توفر تقرير السياسة)
+1. المنصة ليست CMS
+2. النشر التلقائي ليس الهدف
+3. الـ pipeline التحريري هو العمود الفقري
+4. `Today` و`News` و`Workspace Drafts` و`Editorial` هي الأسطح الأكثر حساسية يوميًا
+5. أي تغيير في الحالات أو العقود يحتاج انتباهًا مزدوجًا بين backend وfrontend
+6. RTL واللغة العربية ليستا طبقة تجميلية، بل جزء أساسي من صحة المنتج
+7. أي نص عربي جديد يجب مراجعته ضد أخطاء الترميز قبل الدمج
 
-### 12.2 مبدأ الحسم
+## 17. الوثائق المرتبطة
 
-- وجود blocker يمنع المرور السلس للاعتماد.
-- رئيس التحرير يمكنه:
-  - `approve`
-  - `approve_with_reservations` (بسبب إلزامي)
-  - `send_back`
-  - `reject` (بسبب إلزامي)
-
----
-
-## 13) سياسة الزمن (Freshness) — النقطة الأهم تشغيليًا
-
-هذا القسم حرج لضمان أن قاعة التحرير لا تصبح "ميتة زمنيًا".
-
-### 13.1 ما يطبقه Scout فعليًا
-
-- رفض الخبر القديم: `entry_skipped_stale`.
-- رفض الخبر المستقبلي بشكل غير منطقي: `entry_skipped_future_timestamp`.
-- رفض المصادر/النطاقات المحظورة: `entry_skipped_blocked_source`.
-- رفض بلا timestamp (حسب السياسة):
-  - `entry_skipped_missing_timestamp`
-  - `entry_skipped_missing_timestamp_aggregator`
-  - `entry_skipped_missing_timestamp_scraper`
-- clamp safety cap لعمر الخبر الأقصى (hard safety rail).
-
-### 13.2 مفاتيح الإعداد المهمة
-
-- `ECHOROUK_OS_SCOUT_MAX_ARTICLE_AGE_HOURS`
-- `ECHOROUK_OS_SCOUT_MAX_ARTICLE_FUTURE_MINUTES`
-- `ECHOROUK_OS_SCOUT_REQUIRE_TIMESTAMP_FOR_AGGREGATOR`
-- `ECHOROUK_OS_SCOUT_REQUIRE_TIMESTAMP_FOR_ALL_SOURCES`
-- `ECHOROUK_OS_SCOUT_ALLOW_URL_DATE_FALLBACK`
-- `ECHOROUK_OS_SCOUT_INGEST_FILTERS_ENABLED`
-- `ECHOROUK_OS_SCOUT_CROSS_SOURCE_DEDUP_ENABLED`
-- `ECHOROUK_OS_SCOUT_BLOCKED_DOMAINS`
-
-### 13.3 سياسة صارمة موصى بها للإنتاج
-
-- `SCOUT_MAX_ARTICLE_AGE_HOURS=24`
-- `SCOUT_MAX_ARTICLE_FUTURE_MINUTES=5`
-- `SCOUT_REQUIRE_TIMESTAMP_FOR_AGGREGATOR=true`
-- `SCOUT_REQUIRE_TIMESTAMP_FOR_ALL_SOURCES=true`
-- `SCOUT_ALLOW_URL_DATE_FALLBACK=false` (عند الحاجة لصرامة أعلى)
-- `SCOUT_INGEST_FILTERS_ENABLED=true`
-
-### 13.4 استبعاد الشروق أونلاين من الالتقاط
-
-بناءً على التوجيه التشغيلي: **لا تعتمد الشروق أونلاين ضمن المصادر**.
-
-التنفيذ عبر:
-
-- `ECHOROUK_OS_SCOUT_BLOCKED_DOMAINS=echoroukonline.com,www.echoroukonline.com`
-- أو عبر API policy:
-  - `GET /api/v1/sources/policy`
-  - `PUT /api/v1/sources/policy`
-
----
-
-## 14) FreshRSS / RSS-Bridge Integration
-
-### 14.1 نمط التشغيل
-
-- FreshRSS يجمع كل المصادر.
-- Scout يسحب feed موحد من FreshRSS.
-- RSS-Bridge يغطي المصادر غير RSS.
-
-### 14.2 رابط feed الداخلي الصحيح (داخل شبكة Docker)
-
-- الصيغة التشغيلية الموثوقة داخليًا:
-  - `http://freshrss:80/i/?a=rss&state=all&nb=2000`
-
-> يجب التأكد أن قيمة `.env` تكتب بشكل صحيح عند وجود `&` (بدون كسر السطر أو استبدال خاطئ).
-
----
-
-## 15) المراقبة التشغيلية (Observability)
-
-### 15.1 مؤشرات أساسية
-
-- `dashboard/stats`
-- `dashboard/ops/overview`
-- `jobs/queues/depth`
-- `jobs/providers/health`
-- `jobs/dead-letter`
-- logs:
-  - `freshrss_fetch_started`
-  - `scout_run_complete`
-  - `entry_skipped_stale`
-  - `feed_http_error`
-  - `freshrss_feed_empty`
-
-### 15.2 قواعد تشغيل
-
-- لا bypass عبر تعديل DB مباشر للحالات.
-- أي enqueue عند ضغط عالي يرجع 429 (backpressure).
-- فحص queue depth قبل إطلاق burst jobs.
-
----
-
-## 16) الأمن والامتثال
-
-- Zero-trust sanitization للمدخلات.
-- لا أسرار hardcoded.
-- RBAC على المسارات الحساسة.
-- audit logs للإعدادات والقرارات.
-- فصل أدوار (تحرير/اعتماد/إدارة) لتقليل مخاطر الخطأ.
-
----
-
-## 17) إعدادات حرجة يجب مراقبتها
-
-### 17.1 جدولة وتشغيل
-
-- `ECHOROUK_OS_AUTO_PIPELINE_ENABLED`
-- `ECHOROUK_OS_SCOUT_INTERVAL_MINUTES`
-- `ECHOROUK_OS_AUTO_SCRIBE_ENABLED`
-- `FRESHRSS_CRON_MIN`
-
-### 17.2 جودة/تكلفة/سعة
-
-- `ECHOROUK_OS_ROUTER_BATCH_LIMIT`
-- `ECHOROUK_OS_ROUTER_AI_CALLS_PER_BATCH_CAP`
-- `ECHOROUK_OS_QUEUE_DEPTH_LIMIT_*`
-- `ECHOROUK_OS_PROVIDER_*`
-
----
-
-## 18) الحالة التشغيلية الحالية (وفق الأعمال المنجزة)
-
-- تم تفعيل freshness صارم وتشغيل رفض الأخبار القديمة في Scout logs.
-- تم أرشفة عدد كبير من العناصر القديمة خارج نافذة الزمن التحريرية.
-- ظهر سلوك duplicates مرتفع عند إعادة سحب نفس FreshRSS batch وهذا متوقع.
-- عند ضعف/خطأ URL feed في `.env` تظهر `feed_http_error` أو `freshrss_feed_empty`.
-- تم تثبيت سياسة عدم الاعتماد على `echoroukonline.com` ضمن المصادر.
-
----
-
-## 19) خارطة تطوير مقترحة (تنفيذية)
-
-1. تثبيت سياسة freshness كافتراضي إنتاجي (24h + timestamp required).
-2. تفعيل تنظيف آلي دوري للعناصر القديمة في الحالات غير المنشورة.
-3. بناء شاشة "Time Integrity" في dashboard:
-   - oldest candidate age
-   - stale skipped count
-   - sources with missing timestamps
-4. تحسين مصدر FreshRSS:
-   - ضبط التنويع لكل مصدر (`SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN`)
-   - مراقبة فشل fetch لكل نطاق.
-5. تقليل polling في الواجهة إلى SSE/WebSocket في الوحدات الثقيلة.
-6. توحيد queue policies وإظهار SLA لكل job type.
-7. إضافة connectors نشر اختيارية (WordPress/Drupal/Arc) مع إبقاء default يدوي.
-
----
-
-## 20) تعريف النجاح التحريري (Operational DoD)
-
-لكي نقول المنصة "صحيحة زمنيًا":
-
-- لا عنصر أقدم من نافذة السياسة يظهر في حالات newsroom النشطة.
-- `entry_skipped_stale` يعمل باستمرار عند وجود replay قديم.
-- feed URL ثابت وصحيح من داخل backend container.
-- queue latency ضمن SLA متفق عليه.
-- chief queue تحتوي عناصر حديثة وقابلة للنشر.
-
----
-
-## 21) مراجع داخلية مكملة
-
-- `README.md`
+- `docs/PRODUCT_ROADMAP_AR.md`
+- `docs/PROJECT_PROFILE_AR.md`
 - `docs/architecture.md`
-- `docs/agents.md`
-- `docs/M10_ASYNC_ARCHITECTURE.md`
-- `docs/QUALITY_GATES.md`
-- `docs/TROUBLESHOOTING_PLAYBOOK.md`
-- `docs/OPERATIONS_QUICK_COMMANDS.md`
-- `docs/PLATFORM_CONTENT_MAP.md`
-- `docs/INSTRUCTURE_PLATFORM.md`
-- `docs/SESSION_HANDOFF_2026-03-01_SCOUT_FRESHNESS.md`
+- `docs/USER_GUIDE_AR.md`
+- `docs/PROJECT_MEMORY.md`
+- `AGENT_ONBOARDING.md`
+- `README.md`
 
----
+## 18. خلاصة تعريفية قصيرة
 
-## 22) Roadmap 90-Day (عملي حسب 4 مسارات)
+`Echorouk Editorial OS` هو نظام تشغيل لغرفة الأخبار، لا مجرد محرر ذكي.
+يجمع بين الالتقاط، التصنيف، التوليد الأولي، التحرير، التحقق، الاعتماد، والجاهزية للنشر اليدوي في مسار واحد قابل للتتبع والقياس.
+ولهذا، عندما نطوّر خاصية جديدة داخل المنصة، يجب أن نفكر دائمًا في سؤال واحد:
 
-هذه الخطة تحافظ على فلسفة المنصة: `Ready for Manual Publish` + `Human-in-the-Loop`.
-
-### 22.1 المسار A: Time Integrity (الأولوية القصوى)
-
-**الهدف:** منع أي عنصر ميت زمنيًا من دخول newsroom النشطة.
-
-**التنفيذ:**
-
-1. لوحة `Time Integrity` في dashboard:
-   - `oldest_candidate_age`
-   - `oldest_ready_for_chief_age`
-   - عدادات `entry_skipped_*` حسب السبب
-   - Top مصادر `missing timestamp`
-   - نسبة القبول عبر `URL_DATE_FALLBACK` (عند تفعيله)
-2. `Auto-cleaner` دوري:
-   - أرشفة أي عنصر غير منشور تجاوز نافذة freshness
-   - كتابة سبب موحد (مثل `auto_archived:strict_time_guard`)
-3. `Source Health Score` زمني:
-   - stale rate
-   - missing timestamp rate
-   - fetch error rate
-   - duplicate rate
-4. قائمة مراقبة للمصادر الرديئة (`watchlist`) مع إجراءات مقترحة:
-   - reduce priority
-   - disable temporarily
-   - require manual review
-
-**KPIs:**
-
-- `0` عناصر أقدم من النافذة داخل الحالات النشطة.
-- انخفاض متواصل في `oldest_candidate_age`.
-- ثبات نسبة skip للأخبار القديمة عند replay بدل دخولها القاعة.
-
-### 22.2 المسار B: Quality Gates 2.0
-
-**الهدف:** تقليل الانحراف والرفض المتأخر قبل وصول المادة لرئيس التحرير.
-
-**التنفيذ:**
-
-1. توحيد مخرجات البوابات إلى:
-   - `blocker`
-   - `warning`
-   - `info`
-2. نظام `override` مقيد:
-   - لا يملك override إلا `editor_chief`/`director`
-   - السبب إجباري + audit log
-3. `Claims Graph`:
-   - استخراج claims
-   - ربط كل claim بدليل (`support link`)
-   - وسم `unverifiable` مع سبب عند الحاجة
-4. قاعدة انتقال الحالة:
-   - لا انتقال إلى `ready_for_chief_approval` إذا claim حساس بلا دعم أو بلا توثيق سبب
-5. `Policy-as-code`:
-   - قواعد تحريرية قابلة للتحديث عبر JSON/YAML
-   - versioning + changelog + rollback
-
-**KPIs:**
-
-- انخفاض `chief_reject_rate`.
-- ارتفاع نسبة اجتياز البوابات من أول محاولة.
-- انخفاض زمن إعادة العمل بعد مراجعة رئيس التحرير.
-
-### 22.3 المسار C: Newsroom Productivity
-
-**الهدف:** تقليل زمن الانتقال من `candidate` إلى `ready_for_manual_publish`.
-
-**التنفيذ:**
-
-1. قوالب Smart Editor حسب نوع الخبر:
-   - عاجل
-   - تحليل
-   - رياضة
-   - اقتصاد
-2. Checklist حي داخل المحرر مرتبط مباشرة بالبوابات (أخضر/أحمر).
-3. Story Mode:
-   - clustering تلقائي للمواد المتشابهة
-   - `Story Workspace` مع timeline + sources + entities
-4. دمج Audience Simulator داخل المحرر كـpanel:
-   - توقع التفاعل
-   - مخاطر سوء الفهم
-   - عناوين بديلة
-
-**KPIs:**
-
-- انخفاض `time_to_ready_for_manual_publish`.
-- انخفاض عدد الدورات بين الصحفي ورئيس التحرير.
-- انخفاض التكرار في التغطية لنفس القصة.
-
-### 22.4 المسار D: Reliability + Cost Control
-
-**الهدف:** ثبات أعلى وتكلفة متوقعة تحت الضغط.
-
-**التنفيذ:**
-
-1. تعريف SLA لكل queue:
-   - max latency
-   - max depth
-   - alert thresholds
-2. Throttling/backpressure مضبوط حسب job type.
-3. Provider routing واعي بالتكلفة:
-   - task type
-   - urgency
-   - daily/weekly budget cap
-4. Jobs Health dashboard:
-   - retries
-   - DLQ count
-   - mean runtime
-   - top failure causes
-5. traceability كاملة:
-   - `request_id` + `correlation_id` عبر API/worker/logs
-
-**KPIs:**
-
-- استقرار queue depth ضمن الحدود.
-- انخفاض DLQ growth rate.
-- انحراف تكلفة يومية أقل من الحد المتفق عليه.
-
-### 22.5 خطة التسليم الزمنية (12 أسبوع)
-
-1. **الأسبوع 1-2**
-   - Time Integrity dashboard
-   - auto-cleaner
-   - source health basics
-2. **الأسبوع 3-6**
-   - Gates 2.0
-   - claims extraction
-   - support links enforcement
-3. **الأسبوع 7-10**
-   - Story clustering
-   - editor templates
-   - integrated checklist
-4. **الأسبوع 11-12**
-   - queue SLA
-   - cost-aware provider routing
-   - DLQ workflows
-
-### 22.6 DoD لكل مرحلة
-
-1. مرحلة Time Integrity:
-   - لا عنصر قديم في newsroom النشطة.
-2. مرحلة Gates 2.0:
-   - انخفاض رفض رئيس التحرير بسبب اكتشاف مبكر للأسباب.
-3. مرحلة Productivity:
-   - انخفاض واضح في زمن التحرير.
-4. مرحلة Reliability/Cost:
-   - طوابير مستقرة + تكلفة متوقعة.
-
-
----
-
-## 23) Google News Policy (Keep Coverage, Prevent Dominance)
-
-### 23.1 Decision
-
-- `Google News` remains enabled (do not disable).
-- Time-integrity remains strict:
-  - `SCOUT_MAX_ARTICLE_AGE_HOURS=24`
-  - `SCOUT_REQUIRE_TIMESTAMP_FOR_ALL_SOURCES=true`
-  - `SCOUT_ALLOW_URL_DATE_FALLBACK=false`
-- Control focus is on `throttling + dedup + freshness`, not source removal.
-
-### 23.2 Why This Policy
-
-- Google News provides broad topic coverage and should stay in the mix.
-- Without throttling, aggregator replay can create stale noise and log spam.
-- The newsroom requirement is freshness and editorial value, not maximum raw volume.
-
-### 23.3 Runtime Controls
-
-Use these controls together:
-
-1. Feed window size:
-   - `FRESHRSS_FEED_URL=...&state=all&nb=600`
-2. Per-source cap in FreshRSS mode:
-   - `SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN=6`
-3. Cross-source dedup strictness:
-   - `SCOUT_CROSS_SOURCE_TITLE_SIMILARITY_THRESHOLD=0.92`
-   - `SCOUT_CROSS_SOURCE_PUBLISH_TOLERANCE_HOURS=2`
-
-### 23.4 Operational Command Set
-
-```bash
-set_kv_safe ECHOROUK_OS_FRESHRSS_FEED_URL "http://freshrss:80/i/?a=rss&state=all&nb=600"
-set_kv_safe ECHOROUK_OS_SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN 6
-set_kv_safe ECHOROUK_OS_SCOUT_CROSS_SOURCE_TITLE_SIMILARITY_THRESHOLD 0.92
-set_kv_safe ECHOROUK_OS_SCOUT_CROSS_SOURCE_PUBLISH_TOLERANCE_HOURS 2
-docker compose up -d --force-recreate backend worker
-```
-
-### 23.5 Validation Checklist
-
-- `GET /api/v1/dashboard/time-integrity` returns:
-  - `stale_non_published_total = 0` (or near zero after cleanup tick)
-  - rising `skip_reasons.stale` only when replay appears (expected)
-  - `url_date_fallback.acceptance_ratio = 0` under strict mode
-- Candidate queue remains fresh:
-  - `oldest_candidate_age_hours <= 24`
-- Coverage remains broad:
-  - no manual source disable for Google News feeds.
-
-### 23.6 Escalation Rule
-
-If stale pressure persists while Google coverage is required:
-
-1. Reduce `nb` gradually (`600 -> 500 -> 400`).
-2. Lower `SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN` (`6 -> 5 -> 4`).
-3. Keep strict time policy unchanged (`24h`, timestamp required, no URL fallback).
+**هل هذا التطوير يساعد المادة على التحرك بوضوح داخل المسار التحريري، أم يزيد الضجيج حولها؟**

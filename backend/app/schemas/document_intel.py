@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class DocumentExtractNewsItem(BaseModel):
@@ -14,6 +18,23 @@ class DocumentExtractNewsItem(BaseModel):
     evidence: str
     confidence: float = Field(ge=0.0, le=1.0)
     entities: list[str] = Field(default_factory=list)
+
+
+class DocumentExtractClaim(BaseModel):
+    text: str
+    type: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk_level: str
+
+
+class DocumentExtractEntity(BaseModel):
+    name: str
+    type: str
+
+
+class DocumentStoryAngle(BaseModel):
+    title: str
+    why_it_matters: str
 
 
 class DocumentExtractDataPoint(BaseModel):
@@ -31,16 +52,54 @@ class DocumentExtractStats(BaseModel):
 
 
 class DocumentExtractResponse(BaseModel):
+    document_id: int | None = None
     filename: str
     parser_used: str
     language_hint: str
     detected_language: str
     stats: DocumentExtractStats
+    document_summary: str = ""
+    document_type: str = "report"
     headings: list[str] = Field(default_factory=list)
     news_candidates: list[DocumentExtractNewsItem] = Field(default_factory=list)
+    claims: list[DocumentExtractClaim] = Field(default_factory=list)
+    entities: list[DocumentExtractEntity] = Field(default_factory=list)
+    story_angles: list[DocumentStoryAngle] = Field(default_factory=list)
     data_points: list[DocumentExtractDataPoint] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     preview_text: str = ""
+
+
+class DocumentIntelActionResponse(BaseModel):
+    document_id: int
+    action_type: str
+    target_type: str | None = None
+    target_id: str | None = None
+    message: str
+    payload: dict = Field(default_factory=dict)
+
+
+class DocumentIntelActionLogItem(BaseModel):
+    id: int
+    action_type: str
+    target_type: str | None = None
+    target_id: str | None = None
+    note: str | None = None
+    payload: dict = Field(default_factory=dict)
+    actor_username: str | None = None
+    created_at: datetime
+
+
+class DocumentIntelCreateDraftRequest(StrictRequestModel):
+    angle_title: str | None = None
+    claim_indexes: list[int] = Field(default_factory=list)
+    category: str | None = "international"
+    urgency: str | None = "normal"
+
+
+class DocumentIntelCreateStoryRequest(StrictRequestModel):
+    angle_title: str | None = None
+    angle_why_it_matters: str | None = None
 
 
 class DocumentExtractSubmitResponse(BaseModel):

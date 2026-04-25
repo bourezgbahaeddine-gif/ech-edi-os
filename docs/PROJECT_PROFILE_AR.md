@@ -1,337 +1,143 @@
-# الملف التعريفي الشامل للمشروع
+﻿# الملف التعريفي للمشروع — Echorouk Editorial OS
 
-تاريخ التحديث: 2026-02-25  
-اسم المشروع: `Echorouk Editorial OS`  
-نوع المشروع: منصة تشغيل تحريري ذكية (Newsroom Operating System)
+آخر تحديث: 2026-03-17
 
-## 1) الملخص التنفيذي
-`Echorouk Editorial OS` هي منصة مؤسسية لإدارة دورة حياة الخبر من الالتقاط إلى الجاهزية للنشر اليدوي، مع:
-- حوكمة تحريرية صارمة.
-- نموذج Human-in-the-Loop إلزامي.
-- تشغيل متزامن/غير متزامن عبر API + Queue.
-- دعم متعدد الوحدات: التحرير الذكي، التراند، تحليل الوثائق، Fact-check، SEO، Multimedia، MSI، Memory.
+## 1. التعريف المختصر
 
-الهدف التشغيلي الأساسي:
-- تسريع غرفة الأخبار.
-- رفع جودة القرار التحريري.
-- تقليل الضجيج الإخباري.
-- توحيد تدفق العمل داخل منصة واحدة.
+`Echorouk Editorial OS` هو نظام تشغيل لغرفة الأخبار يدير دورة المادة التحريرية من الالتقاط الأولي للمصدر، إلى التصنيف، إلى المسودة، إلى التحرير والتحقق، ثم إلى الاعتماد النهائي قبل الجاهزية للنشر اليدوي.
 
-## 2) حدود النظام (Scope)
-ما يقوم به النظام:
-- جمع الأخبار من مصادر RSS/FreshRSS/RSS-Bridge.
-- تصنيف وترتيب الأولوية.
-- إنشاء مسودات تحريرية ذكية.
-- تدقيق الجودة والادعاءات والجاهزية.
-- إدارة الاعتماد النهائي.
-- تقديم أدوات صحفية مساعدة (SEO/Fact-check/Multimedia/Document Intelligence).
+هو ليس CMS، وليس أداة AI مستقلة، وليس نظام نشر تلقائي.
+هو منصة تشغيل تربط الإنسان والذكاء والحوكمة في مسار واحد واضح.
 
-ما لا يقوم به مباشرة:
-- النشر النهائي يتم يدويًا خارج النظام (workflow ينتهي عند `ready_for_manual_publish`).
+## 2. المشكلة التي يحلها
 
-## 3) المكدس التقني (Tech Stack)
-## Backend
-- Python 3.11+
-- FastAPI
-- SQLAlchemy + Alembic
-- PostgreSQL (مع `pgvector`)
-- Redis
-- Celery + Flower
-- Structlog
+تعاني غرف الأخبار عادة من:
 
-## Frontend
-- Next.js 16
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- React Query
-- Axios
+- كثافة مصادر يصعب فرزها بسرعة
+- تكرار المواد والإشارات
+- غياب مسار واضح بين الالتقاط والتحرير والاعتماد
+- صعوبة تتبع حالة المادة ومن يملكها الآن
+- ضغط يومي يجعل الصحفي يضيع بين الأدوات بدل العمل على النص
 
-## AI/Integrations
-- Gemini
-- Groq
-- YouTube Data API (للتراند)
-- FreshRSS + RSS-Bridge
-- Tesseract / OCR (في Document Intelligence)
-- Docling (اختياري حسب البناء)
+المنصة تحل ذلك عبر:
 
-## 4) هيكل المستودع
-- `backend/`: منطق النظام + API + queue + models.
-- `frontend/`: لوحة المنصة والصفحات التشغيلية.
-- `alembic/`: migrations.
-- `scripts/`: تهيئة/seed وتشغيل مساعد.
-- `docs/`: وثائق تشغيلية وتقنية.
-- `docker-compose.yml`: تعريف بيئة التشغيل الكاملة.
-- `.env.example`: مرجع الإعدادات.
+- مسار تحريري واضح
+- حالات منضبطة
+- أسطح يومية أبسط حسب الدور
+- أدوات مساندة داخل السياق لا خارجه
+- Human-in-the-Loop في نقاط القرار الحرجة
 
-## 5) الخدمات (Docker Services) والبوابات
-من `docker-compose.yml`:
-- `backend`: API.
-- `worker`: تنفيذ مهام Celery.
-- `flower`: مراقبة المهام.
-- `frontend`: واجهة المنصة.
-- `postgres`: قاعدة البيانات.
-- `redis`: cache + queue broker/result.
-- `minio`: تخزين كائنات.
-- `freshrss-db`: قاعدة FreshRSS.
-- `freshrss`: مجمع RSS.
-- `rssbridge`: تحويل مصادر غير RSS.
+## 3. ما الذي يجعل المنصة مختلفة؟
 
-بوابات شائعة:
-- Backend: `8000`
-- Frontend: `3000`
-- Postgres host-mapped: `5433`
-- Redis host-mapped: `6380`
-- Flower: `5555`
-- MinIO: `9000/9001`
-- FreshRSS: `8082`
-- RSS-Bridge: `8083`
+### 3.1 منصة تشغيل لا مجرد مساعد كتابة
+هي تدير:
 
-## 6) دورة الخبر (Pipeline Lifecycle)
-الحالات الرئيسية (من `backend/app/models/news.py`):
-- `new`
-- `cleaned`
-- `deduped`
-- `classified`
-- `candidate`
-- `approved`
-- `approved_handoff`
-- `draft_generated`
-- `ready_for_chief_approval`
-- `approval_request_with_reservations`
-- `ready_for_manual_publish`
-- `rejected`
-- `published`
-- `archived`
+- الأخبار
+- المسودات
+- القصص
+- التغطيات
+- الاعتماد
+- الجودة
+- الجاهزية للنشر اليدوي
+- التغطية الرقمية
 
-التدفق العملي:
-1. Scout يجلب ويزيل التكرارات.
-2. Router يصنف ويعطي أولوية.
-3. Editorial workspace ينشئ/يعدّل المسودات.
-4. فحوصات الجودة/الادعاءات/SEO.
-5. اعتماد رئيس التحرير.
-6. تجهيز للنشر اليدوي.
+### 3.2 القرار النهائي تحريري بشري
+حتى مع وجود الذكاء الاصطناعي، تبقى المسؤولية التحريرية النهائية بيد الإنسان.
 
-## 7) الوكلاء والوظائف الأساسية
-من `backend/app/agents/`:
-- `scout.py`: ingestion + dedup.
-- `router.py`: تصنيف/أولوية/توجيه.
-- `scribe.py`: توليد/صياغة.
-- `trend_radar.py`: رصد الترندات.
-- `published_monitor.py`: جودة المحتوى المنشور.
-- `audio_agent.py`: مهام صوتية.
+### 3.3 كل مادة تتحرك عبر workflow واضح
+كل مادة لها:
 
-## 8) المنظومة غير المتزامنة (Queue Architecture)
-صفوف Celery الأساسية:
-- `ai_router`
-- `ai_scribe`
-- `ai_quality`
-- `ai_simulator`
-- `ai_msi`
-- `ai_links`
-- `ai_trends`
+- حالة
+- مالك
+- خطوة تالية
+- أثر تدقيقي
+- قابلية للقياس
 
-تعريف المهام الأساسية في:
-- `backend/app/queue/tasks/pipeline_tasks.py`
+## 4. المسار الأساسي
 
-## 9) الجدولة الدورية (Periodic Loops)
-من `backend/app/main.py`:
-- Loop للـ pipeline.
-- Loop للـ trends.
-- Loop للـ published monitor.
-- Loop للـ competitor xray.
+`Scout -> Router -> Scribe -> Smart Editor -> Quality Gates -> Chief Approval -> Ready for Manual Publish`
 
-الوضع الحالي الافتراضي للتراند:
-- `trend_radar_interval_minutes = 120` (كل ساعتين) من `backend/app/core/config.py`.
-- auto trends job يعمل على `geo=ALL` لتوليد snapshot شامل.
+## 5. الوحدات الرئيسية
 
-## 10) وحدات API (Route Map)
-جميعها تحت prefix: `/api/v1`  
-تعريف الربط موجود في `backend/app/main.py`.
+- `News` قاعة الأخبار
+- `Today` نقطة الدخول اليومية حسب الدور
+- `Workspace Drafts` المحرر الذكي ومساحة التحرير
+- `Editorial` الاعتماد والمراجعة
+- `Stories` طبقة المتابعة التحريرية
+- `Events` التغطيات والأحداث
+- `Digital` التغطية الرقمية والنسخ والنشر
+- `Archive` الأرشيف والبحث الدلالي
+- `Memory` الذاكرة التحريرية
+- `UX Insights` قراءة سلوك الاستخدام بعد التبسيط
 
-الوحدات:
-- `/auth`
-- `/news`
-- `/sources`
-- `/editorial`
-- `/dashboard`
-- `/rss`
-- `/settings`
-- `/constitution`
-- `/services` (journalist services)
-- `/memory`
-- `/msi`
-- `/sim`
-- `/media-logger`
-- `/document-intel`
-- `/competitor-xray`
-- `/jobs`
+## 6. الأدوار الأساسية
 
-مسارات النظام العامة:
-- `GET /health`
-- `GET /`
+### الصحفي
+يبدأ من:
 
-## 11) الصلاحيات والأدوار (RBAC)
-الأدوار من `backend/app/models/user.py`:
-- `director`
-- `editor_chief`
-- `journalist`
-- `social_media`
-- `print_editor`
+- `Today`
+- `News`
+- `Workspace Drafts`
 
-الأقسام (Departments) مدعومة لكل مستخدم.
+### رئيس التحرير
+يبدأ من:
 
-## 12) الواجهة الأمامية (Frontend Surface)
-صفحات التشغيل الأساسية في `frontend/src/app/`:
-- `dashboard`
-- `news`
-- `editorial`
-- `workspace-drafts`
-- `sources`
-- `settings`
-- `agents`
-- `trends`
-- `memory`
-- `msi`
-- `simulator`
-- `competitor-xray`
-- `team`
-- `constitution`
-- `services/*`:
-  - `document-intel`
-  - `editor`
-  - `fact-check`
-  - `media-logger`
-  - `multimedia`
-  - `seo`
+- `Today`
+- `Editorial`
 
-## 13) التراند (الوضع التشغيلي الحالي)
-الحالة المطبقة حاليًا:
-- مسح شامل بضغط واحدة (`geo=ALL`).
-- snapshot مجمع في cache.
-- تصفية محلية حسب الجغرافيا/التصنيف بدون إعادة scan لكل خيار.
-- تحديث تلقائي كل ساعتين.
-- تحسين quality filter للكلمات لتقليل الكلمات الاعتباطية.
-- دعم YouTube Trends عبر API Key من الإعدادات.
+### المدير
+يركز أكثر على:
 
-ملفات رئيسية:
-- `backend/app/agents/trend_radar.py`
-- `backend/app/api/routes/dashboard.py`
-- `frontend/src/app/trends/page.tsx`
-- `frontend/src/lib/api.ts`
+- الأداء
+- النظام
+- المصادر
+- الإعدادات
+- سلوك الاستخدام
 
-## 14) ذكاء الوثائق (Document Intelligence)
-الوحدة:
-- `/api/v1/document-intel/extract`
-- `/api/v1/document-intel/extract/submit`
-- `/api/v1/document-intel/extract/{job_id}`
+## 7. التبسيط الحالي في الواجهة
 
-المنهج:
-- محاولة Docling (إن كان متاحًا).
-- fallback إلى parsers بديلة.
-- OCR عبر Tesseract حسب الشروط/الإعدادات.
-- استخراج:
-  - مرشحات أخبار.
-  - نقاط رقمية/بيانية.
-  - preview_text.
+بعد جولات UX الأخيرة، أصبحت المنصة تعتمد على:
 
-## 15) الإعدادات الحرجة (Critical Configuration)
-أمثلة مهمة:
-- `ECHOROUK_OS_GEMINI_API_KEY`
-- `ECHOROUK_OS_GROQ_API_KEY`
-- `ECHOROUK_OS_YOUTUBE_DATA_API_KEY`
-- `ECHOROUK_OS_YOUTUBE_TRENDS_ENABLED`
-- `ECHOROUK_OS_TREND_RADAR_INTERVAL_MINUTES`
-- `ECHOROUK_OS_DOCUMENT_INTEL_*`
-- إعدادات DB/Redis/Queue
-- إعدادات FreshRSS/RSSBridge
+- `Today` كمنسق العمل اليومي
+- `News` كطابور بطاقات سريع بدل جداول ثقيلة
+- `Workspace Drafts` كمحرر من مرحلتين: كتابة ثم مراجعة
+- `Editorial` كطوابير قرار واضحة
+- `Stories` كطبقة متابعة بدل سطح مزدحم
+- `Digital` كمنصة تنفيذ وتشغيل (`Execute / Compose / Planning`)
 
-المرجع الكامل:
-- `.env.example`
-- `backend/app/core/config.py`
+## 8. الحدود الوظيفية للمنصة
 
-## 16) المراقبة والتتبّع (Observability)
-- structured logs عبر `structlog`.
-- `request_id` و `correlation_id`.
-- جداول تشغيل ومهام:
-  - `pipeline_runs`
-  - `failed_jobs`
-  - `job_runs` (من نموذج queue)
-- Dashboard endpoints:
-  - `/dashboard/stats`
-  - `/dashboard/pipeline-runs`
-  - `/dashboard/failed-jobs`
-  - `/jobs/*`
+### تشمل
+- الالتقاط من المصادر
+- إزالة التكرار
+- التصنيف والتوجيه
+- توليد مسودة أولية
+- التحرير والمراجعة
+- الجودة والتحقق
+- الاعتماد النهائي
+- الجاهزية للنشر اليدوي
+- البحث الدلالي في الأرشيف
+- التغطية الرقمية
 
-## 17) قاعدة البيانات (Domain Models الرئيسية)
-ملفات النماذج في `backend/app/models/` تشمل:
-- `news.py`
-- `job_queue.py`
-- `quality.py`
-- `settings.py`
-- `project_memory.py`
-- `msi.py`
-- `simulator.py`
-- `competitor_xray.py`
-- `media_logger.py`
-- `knowledge.py`
-- `link_intelligence.py`
-- `user.py`
-- `user_activity.py`
-- `constitution.py`
-- `audit.py`
+### لا تشمل
+- النشر التلقائي النهائي على الـ CMS
+- استبدال القرار التحريري البشري
 
-## 18) الأمان والتشغيل
-- لا مفاتيح hardcoded.
-- الاعتماد على env/config store.
-- صلاحيات مبنية على الدور.
-- حماية endpoint حسب الدور.
-- fallback في حال فشل مزود AI.
-- backpressure على الطوابير.
+## 9. التكنولوجيا الأساسية
 
-## 19) أسلوب النشر المعتمد (Git وسيط)
-السير العملي الموصى به:
-1. تعديل محلي (PowerShell).
-2. `git add/commit/push`.
-3. على السيرفر: `git pull`.
-4. `docker compose build`.
-5. `docker compose up -d --force-recreate`.
-6. اختبارات API بعد النشر.
+- Frontend: `Next.js 16`, `React`, `TypeScript`, `Tailwind`
+- Backend: `FastAPI`, `SQLAlchemy`, `Pydantic`, `Alembic`
+- Data: `PostgreSQL`, `pgvector`, `Redis`
+- Async: `Celery`
+- Storage: `MinIO`
+- Feeds: `FreshRSS`, `RSS-Bridge`
 
-هذا يحافظ على consistency بين المحلي والسيرفر ويمنع drift.
+## 10. الوثيقة المرجعية الأوسع
 
-## 20) أوامر تشغيل وصيانة سريعة
-- تحقق الحالة:
-  - `docker compose ps`
-  - `curl http://127.0.0.1:8000/health`
-- مراقبة backend:
-  - `docker logs ech-backend --since 10m | tail -n 200`
-- اختبار auth:
-  - `POST /api/v1/auth/login`
-- اختبار trends:
-  - `POST /api/v1/dashboard/agents/trends/scan?geo=ALL&category=all`
-  - `GET /api/v1/dashboard/agents/trends/latest?geo=ALL&category=all`
-- اختبار document-intel:
-  - `POST /api/v1/document-intel/extract` مع ملف `-F file=@...pdf`
+للتفاصيل الكاملة الخاصة بالمنتج، الواجهات، الوحدات، والحالة الحالية بعد آخر جولات التبسيط، راجع:
 
-## 21) المخاطر/النقاط المفتوحة
-- جودة التراند تعتمد على جودة المصادر الخارجية وإشارات التحقق.
-- OCR للـ PDF الثقيل قد يحتاج tuning حسب نوع الوثائق الرسمية.
-- يجب مراقبة timeouts لمهام الذكاء والوثائق في الإنتاج.
-- أي تغيير في `.env` يحتاج إعادة إنشاء الخدمة المعنية.
+`docs/PLATFORM_MASTER_DETAILS_AR.md`
 
-## 22) الوثائق المرجعية داخل المشروع
-- `README.md`
-- `docs/architecture.md`
-- `docs/agents.md`
-- `docs/M10_ASYNC_ARCHITECTURE.md`
-- `docs/M5_SMART_EDITOR.md`
-- `docs/DOCUMENT_INTEL_ROLLOUT.md`
-- `docs/YOUTUBE_TRENDS_ROLLOUT.md`
-- `docs/TROUBLESHOOTING_PLAYBOOK.md`
-- `docs/OPERATIONS_QUICK_COMMANDS.md`
+ولترتيب التطوير القادم والخصائص ذات الأولوية، راجع:
 
----
-
-هذا الملف يمثل Snapshot تشغيلي/تقني شامل للمشروع.  
-يفضل تحديثه بعد كل milestone كبيرة أو تعديل معماري.
+`docs/PRODUCT_ROADMAP_AR.md`

@@ -4,23 +4,42 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, FileText } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import Sidebar from './Sidebar';
-import TopBar from './TopBar';
+
 import { constitutionApi } from '@/lib/constitution-api';
 import { useAuth } from '@/lib/auth';
+import { cn } from '@/lib/utils';
+import CommandPalette from '@/components/layout/CommandPalette';
+import Sidebar from '@/components/layout/Sidebar';
+import TopBar from '@/components/layout/TopBar';
+import { UxShellModeProvider, useUxShellMode } from '@/components/layout/UxShellModeContext';
 
 const PUBLIC_PATHS = ['/login'];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const { user } = useAuth();
-    const queryClient = useQueryClient();
     const isPublic = PUBLIC_PATHS.includes(pathname);
+
+    if (isPublic) return <>{children}</>;
+
+    return (
+        <UxShellModeProvider>
+            <AppShellChrome>{children}</AppShellChrome>
+        </UxShellModeProvider>
+    );
+}
+
+function AppShellChrome({ children }: { children: React.ReactNode }) {
+    const pathname = usePathname();
+    const { user } = useAuth();
+    const { mode } = useUxShellMode();
+    const chromeHidden = mode === 'focus' || mode === 'emergency' || mode === 'deep_work';
+    const queryClient = useQueryClient();
+
     const [ack, setAck] = useState(false);
     const [ackDismissed, setAckDismissed] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+    const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
     const [theme, setTheme] = useState<'light' | 'dark'>(() => {
         if (typeof window === 'undefined') return 'light';
         return localStorage.getItem('ech_theme') === 'dark' ? 'dark' : 'light';
@@ -33,6 +52,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }
     }, [theme]);
 
+    useEffect(() => {
+        if (pathname.startsWith('/workspace-drafts')) return;
+        const handler = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            const isInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || Boolean(target?.isContentEditable);
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !isInput) {
+                event.preventDefault();
+                setCommandPaletteOpen(true);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [pathname]);
+
     const toggleTheme = () => {
         setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
     };
@@ -40,13 +73,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const { data: latest } = useQuery({
         queryKey: ['constitution-latest'],
         queryFn: () => constitutionApi.latest(),
-        enabled: !isPublic,
     });
 
     const { data: ackStatus } = useQuery({
         queryKey: ['constitution-ack'],
         queryFn: () => constitutionApi.ackStatus(),
-        enabled: !isPublic && !!user,
+        enabled: !!user,
     });
 
     const ackMutation = useMutation({
@@ -57,14 +89,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         },
     });
 
-    if (isPublic) return <>{children}</>;
-
     const shouldShowConstitutionGate = Boolean(
         !ackDismissed &&
-        user &&
-        latest?.data &&
-        ackStatus?.data &&
-        !ackStatus.data.acknowledged
+            user &&
+            latest?.data &&
+            ackStatus?.data &&
+            !ackStatus.data.acknowledged,
     );
 
     const confirm = () => {
@@ -74,35 +104,47 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <div className="flex app-theme-shell overflow-x-hidden">
-            <Sidebar
-                collapsed={sidebarCollapsed}
-                onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
-                mobileOpen={mobileSidebarOpen}
-                onCloseMobile={() => setMobileSidebarOpen(false)}
-            />
+        <div className={cn('flex overflow-x-hidden app-theme-shell', chromeHidden && 'bg-[#020817]')}>
+            {!chromeHidden && (
+                <Sidebar
+                    collapsed={sidebarCollapsed}
+                    onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+                    mobileOpen={chromeHidden ? false : mobileSidebarOpen}
+                    onCloseMobile={() => setMobileSidebarOpen(false)}
+                />
+            )}
+
             <main
                 className={cn(
-                    'flex-1 min-h-screen min-w-0 overflow-x-hidden transition-all duration-300',
-                    sidebarCollapsed ? 'md:mr-[72px]' : 'md:mr-[260px]'
+                    'min-h-screen min-w-0 flex-1 overflow-x-hidden transition-all duration-300',
+                    chromeHidden ? 'md:mr-0' : sidebarCollapsed ? 'md:mr-[72px]' : 'md:mr-[260px]',
                 )}
             >
-                <TopBar theme={theme} onToggleTheme={toggleTheme} onOpenSidebar={() => setMobileSidebarOpen(true)} />
-                <div className="p-3 md:p-6 mesh-gradient min-h-[calc(100vh-64px)]">{children}</div>
+                {!chromeHidden && (
+                    <TopBar
+                        theme={theme}
+                        onToggleTheme={toggleTheme}
+                        onOpenSidebar={() => setMobileSidebarOpen(true)}
+                        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+                    />
+                )}
+                <div className={cn('min-h-[calc(100vh-64px)] mesh-gradient', chromeHidden ? 'p-0' : 'p-3 md:p-6')}>{children}</div>
             </main>
 
+            <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+
             {shouldShowConstitutionGate && (
-                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-gray-900/90 p-6 app-surface">
-                        <div className="flex items-center gap-2 text-white mb-3">
-                            <FileText className="w-5 h-5 text-emerald-400" />
+                        <div className="mb-3 flex items-center gap-2 text-white">
+                            <FileText className="h-5 w-5 text-emerald-400" />
                             <h2 className="text-lg font-semibold">تأكيد قراءة الدستور</h2>
                         </div>
-                        <p className="text-sm text-gray-300 leading-relaxed">
+                        <p className="text-sm leading-relaxed text-gray-300">
                             الدستور التحريري هو المرجع الإلزامي لجميع المراحل. يرجى الاطلاع عليه قبل المتابعة.
                         </p>
                         <div className="mt-3">
-                            <a href="/constitution" className="text-emerald-300 hover:text-emerald-200 underline text-sm" target="_blank" rel="noreferrer">
+                            <a href="/constitution" className="text-sm text-emerald-300 underline hover:text-emerald-200" target="_blank" rel="noreferrer">
                                 فتح الدستور
                             </a>
                         </div>
@@ -110,7 +152,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             <input
                                 type="checkbox"
                                 checked={ack}
-                                onChange={(e) => setAck(e.target.checked)}
+                                onChange={(event) => setAck(event.target.checked)}
                                 className="accent-emerald-500"
                             />
                             أقر أنني قرأت الدستور وسألتزم به
@@ -118,9 +160,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         <button
                             onClick={confirm}
                             disabled={!ack || ackMutation.isPending}
-                            className="mt-4 w-full h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/20 text-emerald-300 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            <CheckCircle className="w-4 h-4" />
+                            <CheckCircle className="h-4 w-4" />
                             متابعة
                         </button>
                     </div>

@@ -17,6 +17,10 @@
 - `v1.1 (Async AI Isolation)`
 - `v2.0 (Scalable Editorial Infrastructure)`
 
+## Current Runtime Version
+- Current application runtime version in `backend/app/main.py`: `1.1.0`
+- Current release line: `v1.1 (Async AI Isolation)`
+
 ## Ownership
 - Designer/Developer: `Bourezg Baha eddine` (???? ????? ?????)
 - Rights: `All rights reserved`

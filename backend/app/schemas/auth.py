@@ -5,18 +5,21 @@ Echorouk Editorial OS — Authentication Schemas
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.user import UserRole
 
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-class LoginRequest(BaseModel):
+
+class LoginRequest(StrictRequestModel):
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=6)
 
 
 class TokenResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: "UserProfile"
 
@@ -50,7 +53,7 @@ class UserListItem(BaseModel):
         from_attributes = True
 
 
-class UserCreateRequest(BaseModel):
+class UserCreateRequest(StrictRequestModel):
     full_name_ar: str = Field(..., min_length=2, max_length=100)
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=8, max_length=128)
@@ -60,7 +63,7 @@ class UserCreateRequest(BaseModel):
     is_active: bool = True
 
 
-class UserUpdateRequest(BaseModel):
+class UserUpdateRequest(StrictRequestModel):
     full_name_ar: Optional[str] = Field(default=None, min_length=2, max_length=100)
     username: Optional[str] = Field(default=None, min_length=2, max_length=50)
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)

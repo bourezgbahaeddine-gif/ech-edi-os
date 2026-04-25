@@ -8,13 +8,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class MsiProfileInfo(BaseModel):
     id: str
     display_name: str
     description: str | None = None
 
 
-class MsiRunRequest(BaseModel):
+class MsiRunRequest(StrictRequestModel):
     profile_id: str = Field(min_length=2, max_length=64)
     entity: str = Field(min_length=2, max_length=255)
     mode: Literal["daily", "weekly"]
@@ -87,7 +91,7 @@ class MsiTopResponse(BaseModel):
     items: list[MsiTopEntityItem]
 
 
-class MsiWatchlistCreateRequest(BaseModel):
+class MsiWatchlistCreateRequest(StrictRequestModel):
     profile_id: str = Field(min_length=2, max_length=64)
     entity: str = Field(min_length=2, max_length=255)
     run_daily: bool = True
@@ -96,7 +100,7 @@ class MsiWatchlistCreateRequest(BaseModel):
     aliases: list[str] = Field(default_factory=list)
 
 
-class MsiWatchlistUpdateRequest(BaseModel):
+class MsiWatchlistUpdateRequest(StrictRequestModel):
     run_daily: bool | None = None
     run_weekly: bool | None = None
     enabled: bool | None = None

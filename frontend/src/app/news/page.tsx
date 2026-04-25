@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import Link from 'next/link';
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -7,11 +8,17 @@ import { isAxiosError } from 'axios';
 import { newsApi, dashboardApi, editorialApi, type ArticleBrief, type DashboardNotification } from '@/lib/api';
 import { cn, formatRelativeTime, getStatusColor, getCategoryLabel, isFreshBreaking, truncate } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { WorkflowCard } from '@/components/workflow/WorkflowCard';
+import { WorkflowHelpPanel } from '@/components/workflow/WorkflowHelpPanel';
+import { NextActionBar } from '@/components/workflow/NextActionBar';
+import { trackNextAction, useTrackSurfaceView } from '@/lib/ux-telemetry';
+import { TutorialOverlay } from '@/components/onboarding/TutorialOverlay';
+import { useTutorialState } from '@/lib/tutorial';
 import {
-    Newspaper, Search, Zap, ExternalLink,
-    Clock, ChevronLeft, ChevronRight, Star,
+    Newspaper, Search, ExternalLink,
+    ChevronLeft, ChevronRight,
     RefreshCw,
-    CheckCircle, XCircle, RotateCw, Copy,
+    Rows3, TableProperties, ArrowLeft,
 } from 'lucide-react';
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -36,17 +43,28 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
 
 function NewsPageContent() {
     const queryClient = useQueryClient();
-    const router = useRouter();
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const { state: tutorialState, update: updateTutorial, complete: completeTutorial, active: tutorialActive } = useTutorialState();
+    const tutorialRole = tutorialState.role;
+    const tutorialStep = tutorialState.step;
+    const isQuickTour = tutorialState.pace === 'quick';
+    const showNewsOverlay = tutorialActive && tutorialRole === 'journalist' && tutorialStep === 'news_open';
     const { user } = useAuth();
+    const initialStatus = searchParams.get('status') || '';
+    const initialCategory = searchParams.get('category') || '';
+    const initialBreakingParam = searchParams.get('breaking');
     const [page, setPage] = useState(1);
-    const [status, setStatus] = useState<string>('');
-    const [category, setCategory] = useState<string>('');
+    const [status, setStatus] = useState<string>(initialStatus);
+    const [category, setCategory] = useState<string>(initialCategory);
     const [search, setSearch] = useState(() => searchParams.get('q') || '');
     const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [isBreaking, setIsBreaking] = useState<boolean | null>(null);
-    const [selectedArticle, setSelectedArticle] = useState<number | null>(null);
-    const [rejectReason, setRejectReason] = useState('');
+    const [isBreaking, setIsBreaking] = useState<boolean | null>(() => {
+        if (initialBreakingParam === 'true') return true;
+        if (initialBreakingParam === 'false') return false;
+        return null;
+    });
+    const [viewMode, setViewMode] = useState<'queue' | 'table'>('queue');
     const [draftEditor, setDraftEditor] = useState<{
         articleId: number;
         action: string;
@@ -59,13 +77,37 @@ function NewsPageContent() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [infoMessage, setInfoMessage] = useState<string | null>(null);
     const [liveRefreshUntil, setLiveRefreshUntil] = useState<number>(0);
-    const editorName = user?.full_name_ar || 'رئيس التحرير';
     const kickLiveRefresh = (seconds = 30) => setLiveRefreshUntil(Date.now() + seconds * 1000);
 
     useEffect(() => {
         const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
         return () => clearTimeout(t);
     }, [search]);
+
+    useEffect(() => {
+        if (tutorialActive && tutorialRole === 'journalist' && tutorialStep === 'today_open') {
+            updateTutorial({ step: 'news_open' });
+        }
+    }, [tutorialActive, tutorialRole, tutorialStep, updateTutorial]);
+
+    useEffect(() => {
+        if (showNewsOverlay && viewMode !== 'queue') {
+            setViewMode('queue');
+        }
+    }, [showNewsOverlay, viewMode]);
+
+    const surfaceDetails = useMemo(
+        () => ({
+            role: user?.role || 'guest',
+            view_mode: viewMode,
+            status_filter: status || 'all',
+            category_filter: category || 'all',
+            breaking_filter: isBreaking === null ? 'all' : isBreaking ? 'true' : 'false',
+        }),
+        [category, isBreaking, status, user?.role, viewMode],
+    );
+
+    useTrackSurfaceView('news', surfaceDetails);
 
     const { data, isLoading } = useQuery({
         queryKey: ['news', page, status, category, debouncedSearch, isBreaking],
@@ -102,52 +144,7 @@ function NewsPageContent() {
         onError: (err: unknown) => setErrorMessage(getApiErrorMessage(err, 'فشل تحديث الأخبار')),
     });
 
-    const decideMutation = useMutation({
-        mutationFn: async ({
-            articleId,
-            decision,
-            reason,
-        }: {
-            articleId: number;
-            decision: string;
-            reason?: string;
-        }) => {
-            if (decision === 'approve') {
-                const draftRes = await editorialApi.handoff(articleId);
-                return { workId: draftRes.data?.work_id || null };
-            }
-            await editorialApi.decide(articleId, { editor_name: editorName, decision, reason });
-            return { workId: null };
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['news'] });
-            queryClient.invalidateQueries({ queryKey: ['pending-editorial'] });
-            queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-            setSelectedArticle(null);
-            setRejectReason('');
-        },
-        onError: (err: unknown) => setErrorMessage(getApiErrorMessage(err, 'تعذر تنفيذ القرار')),
-    });
 
-    const processMutation = useMutation({
-        mutationFn: ({ articleId, action }: { articleId: number; action: string }) =>
-            editorialApi.process(articleId, { action }),
-        onSuccess: (res, vars) => {
-            const resultText = typeof res.data?.result === 'string' ? res.data.result : '';
-            const draft = res.data?.draft;
-            setDraftEditor({
-                articleId: vars.articleId,
-                action: vars.action,
-                draftId: typeof draft?.id === 'number' ? draft.id : undefined,
-                workId: typeof draft?.work_id === 'string' ? draft.work_id : undefined,
-                version: typeof draft?.version === 'number' ? draft.version : undefined,
-                title: typeof draft?.title === 'string' && draft.title.trim() ? draft.title : '',
-                body: draft?.body || resultText || 'تم تنفيذ الإجراء بنجاح',
-            });
-            queryClient.invalidateQueries({ queryKey: ['news'] });
-        },
-        onError: (err: unknown) => setErrorMessage(getApiErrorMessage(err, 'تعذرت معالجة الخبر')),
-    });
 
     const saveDraftMutation = useMutation({
         mutationFn: (payload: {
@@ -196,31 +193,6 @@ function NewsPageContent() {
         onError: (err: unknown) => setErrorMessage(getApiErrorMessage(err, 'تعذر تطبيق المسودة على الخبر')),
     });
 
-    const socialVariantsMutation = useMutation({
-        mutationFn: (articleId: number) => editorialApi.socialVariantsForArticle(articleId),
-        onSuccess: async (res, articleId) => {
-            const variants = res.data?.variants || {};
-            const text = [
-                `Facebook: ${variants.facebook || '-'}`,
-                `X: ${variants.x || '-'}`,
-                `Push: ${variants.push || '-'}`,
-                `Breaking: ${variants.breaking_alert || '-'}`,
-            ].join('\n\n');
-            try {
-                if (typeof navigator !== 'undefined' && navigator.clipboard) {
-                    await navigator.clipboard.writeText(text);
-                    setInfoMessage(`تم نسخ نسخ السوشيال للخبر #${articleId}`);
-                    setErrorMessage(null);
-                    return;
-                }
-            } catch {
-                // Fallback: expose text in info banner.
-            }
-            setInfoMessage(text);
-            setErrorMessage(null);
-        },
-        onError: (err: unknown) => setErrorMessage(getApiErrorMessage(err, 'تعذر جلب نسخ السوشيال')),
-    });
 
     const refresh = () => refreshPipeline.mutate();
 
@@ -268,6 +240,17 @@ function NewsPageContent() {
         return out;
     }, [articles, insightsMap]);
 
+    const tutorialArticle = visibleArticles[0];
+
+    const handleNewsNext = () => {
+        if (tutorialArticle) {
+            updateTutorial({ step: 'editor_edit' });
+            router.push(`/workspace-drafts?article_id=${tutorialArticle.id}`);
+            return;
+        }
+        completeTutorial();
+    };
+
     const { data: dailySnapshot, isLoading: dailySnapshotLoading } = useQuery({
         queryKey: ['news-daily-snapshot'],
         queryFn: async () => {
@@ -310,20 +293,6 @@ function NewsPageContent() {
     ];
     const categories = ['', 'politics', 'economy', 'sports', 'technology', 'local_algeria', 'international', 'culture', 'society', 'health'];
 
-    const categoryColor = (cat?: string | null) => {
-        switch (cat) {
-            case 'politics': return 'border-blue-500/30 text-blue-300 bg-blue-500/10';
-            case 'economy': return 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10';
-            case 'sports': return 'border-amber-500/30 text-amber-300 bg-amber-500/10';
-            case 'technology': return 'border-violet-500/30 text-violet-300 bg-violet-500/10';
-            case 'local_algeria': return 'border-sky-500/30 text-sky-300 bg-sky-500/10';
-            case 'international': return 'border-rose-500/30 text-rose-300 bg-rose-500/10';
-            case 'culture': return 'border-fuchsia-500/30 text-fuchsia-300 bg-fuchsia-500/10';
-            case 'society': return 'border-lime-500/30 text-lime-300 bg-lime-500/10';
-            case 'health': return 'border-teal-500/30 text-teal-300 bg-teal-500/10';
-            default: return 'border-white/10 text-gray-300 bg-white/5';
-        }
-    };
     const getStatusLabel = (status: string) => {
         const s = (status || '').toLowerCase();
         const labels: Record<string, string> = {
@@ -346,13 +315,101 @@ function NewsPageContent() {
 
     const role = (user?.role || '').toLowerCase();
     const canApproveReject = role === 'director' || role === 'editor_chief';
-    const canRewrite = ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'].includes(role);
-    const canProcess = canRewrite;
     const isSocialRole = role === 'social_media';
-    const canUseMultimedia = ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'].includes(role);
+
+    const getReasonForArticle = (article: ArticleBrief) => {
+        const normalizedStatus = (article.status || '').toLowerCase();
+        if (article.is_breaking) {
+            return 'ظهرت كمادة عاجلة وتحتاج حسمًا سريعًا داخل غرفة الأخبار.';
+        }
+        if (normalizedStatus === 'candidate' || normalizedStatus === 'classified') {
+            return 'دخلت طابور الأخبار وتنتظر بدء العمل التحريري أو التوجيه إلى المسودة.';
+        }
+        if (normalizedStatus === 'approved_handoff' || normalizedStatus === 'draft_generated') {
+            return 'وصلت إلى مرحلة المسودة وتحتاج تحريرًا أو مراجعة قبل الإرسال للاعتماد.';
+        }
+        if (normalizedStatus === 'ready_for_chief_approval') {
+            return canApproveReject
+                ? 'وصلت إليك لأن النسخة أصبحت جاهزة لقرار رئيس التحرير.'
+                : 'هذه المادة بانتظار قرار رئيس التحرير بعد انتهاء التحرير.';
+        }
+        if (normalizedStatus === 'approval_request_with_reservations') {
+            return canApproveReject
+                ? 'هذه المادة تحمل تحفظات أو ملاحظات وتحتاج قرارًا واضحًا.'
+                : 'عادت هذه المادة بتحفظات أو ملاحظات وتحتاج تحديثًا ثم إعادة الإرسال.';
+        }
+        if (normalizedStatus === 'ready_for_manual_publish') {
+            return 'اجتازت مسار الاعتماد وأصبحت جاهزة للنشر اليدوي أو التسليم للنشر.';
+        }
+        if (normalizedStatus === 'published') {
+            return 'هذه المادة منشورة ويمكن الرجوع إلى تفاصيلها أو استثمارها في السوشيال.';
+        }
+        if (normalizedStatus === 'rejected') {
+            return 'تم رفض هذه المادة وتحتاج مراجعة السبب قبل إعادة العمل عليها.';
+        }
+        return 'هذه المادة موجودة في المسار التحريري ويمكن فتحها لمعرفة تفاصيل أكثر.';
+    };
+
+    const getNextActionForArticle = (article: ArticleBrief) => {
+        const normalizedStatus = (article.status || '').toLowerCase();
+        if (normalizedStatus === 'candidate' || normalizedStatus === 'classified') {
+            return { label: 'ابدأ التحرير', href: `/workspace-drafts?article_id=${article.id}` };
+        }
+        if (normalizedStatus === 'approved_handoff' || normalizedStatus === 'draft_generated') {
+            return { label: 'أكمل المسودة', href: `/workspace-drafts?article_id=${article.id}` };
+        }
+        if (normalizedStatus === 'ready_for_chief_approval' || normalizedStatus === 'approval_request_with_reservations') {
+            return canApproveReject
+                ? { label: 'افتح طابور الاعتماد', href: '/editorial' }
+                : { label: 'راجع في المحرر', href: `/workspace-drafts?article_id=${article.id}` };
+        }
+        if (normalizedStatus === 'ready_for_manual_publish') {
+            return isSocialRole
+                ? { label: 'راجع الجاهز للنشر', href: '/editorial' }
+                : { label: 'افتح التفاصيل', href: `/news/${article.id}` };
+        }
+        if (normalizedStatus === 'published') {
+            return { label: 'افتح التفاصيل', href: `/news/${article.id}` };
+        }
+        return { label: 'افتح المادة', href: `/news/${article.id}` };
+    };
+
+    const getImportanceTone = (article: ArticleBrief) => {
+        if (article.is_breaking) return 'danger' as const;
+        if (article.importance_score >= 8) return 'danger' as const;
+        if (article.importance_score >= 6) return 'warn' as const;
+        if (article.importance_score <= 3) return 'success' as const;
+        return 'default' as const;
+    };
+
+    const getImportanceChip = (article: ArticleBrief) => {
+        if (article.is_breaking) {
+            return { label: 'أولوية عاجلة', className: 'border-rose-500/30 bg-rose-500/10 text-rose-200' };
+        }
+        if (article.importance_score >= 8) {
+            return { label: 'أولوية عالية', className: 'border-amber-500/30 bg-amber-500/10 text-amber-200' };
+        }
+        if (article.importance_score >= 6) {
+            return { label: 'أولوية متوسطة', className: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200' };
+        }
+        return { label: 'أولوية عادية', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' };
+    };
+
+    const recommendedArticle = visibleArticles[0];
+    const recommendedAction = recommendedArticle ? getNextActionForArticle(recommendedArticle) : null;
 
     return (
         <div className="space-y-6">
+            <TutorialOverlay
+                open={showNewsOverlay}
+                stepLabel={`الخطوة 2 / ${isQuickTour ? 4 : 5}`}
+                title="افتح المادة الأولى"
+                description="هذه مادة جاهزة للعمل. افتح المحرر لنبدأ التعديل السريع."
+                targetSelector='[data-tutorial="news-first-edit"]'
+                primaryLabel="افتح المحرر"
+                onPrimary={handleNewsNext}
+                onSkip={completeTutorial}
+            />
             {errorMessage && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-center justify-between">
                     <span>{errorMessage}</span>
@@ -398,6 +455,31 @@ function NewsPageContent() {
                         </button>
                     </div>
                 </div>
+
+                {recommendedArticle && recommendedAction && (
+                    <NextActionBar
+                        title={recommendedAction.label}
+                        description={getReasonForArticle(recommendedArticle)}
+                        href={recommendedAction.href}
+                        actionLabel={recommendedAction.label}
+                        tone={getImportanceTone(recommendedArticle)}
+                        meta={[
+                            recommendedArticle.source_name ? `المصدر: ${recommendedArticle.source_name}` : '',
+                            recommendedArticle.is_breaking ? 'خبر عاجل' : '',
+                            recommendedArticle.importance_score ? `الأهمية: ${recommendedArticle.importance_score}` : '',
+                        ].filter(Boolean)}
+                        onAction={() =>
+                            trackNextAction('news', recommendedAction.label, {
+                                ...surfaceDetails,
+                                queue_view: viewMode,
+                                article_id: recommendedArticle.id,
+                                article_status: recommendedArticle.status,
+                                target_href: recommendedAction.href,
+                                recommended: true,
+                            })
+                        }
+                    />
+                )}
 
                 <div className="rounded-2xl border border-white/10 bg-gray-900/45 p-4 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -474,6 +556,35 @@ function NewsPageContent() {
                             <option key={c} value={c}>{getCategoryLabel(c)}</option>
                         ))}
                     </select>
+
+                    <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('queue')}
+                            className={cn(
+                                'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors',
+                                viewMode === 'queue'
+                                    ? 'bg-emerald-500/20 text-emerald-200'
+                                    : 'text-gray-300 hover:text-white',
+                            )}
+                        >
+                            <Rows3 className="w-3.5 h-3.5" />
+                            طابور العمل
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('table')}
+                            className={cn(
+                                'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors',
+                                viewMode === 'table'
+                                    ? 'bg-cyan-500/20 text-cyan-200'
+                                    : 'text-gray-300 hover:text-white',
+                            )}
+                        >
+                            <TableProperties className="w-3.5 h-3.5" />
+                            عرض تفصيلي
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -530,278 +641,158 @@ function NewsPageContent() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {isLoading ? (
-                    Array.from({ length: 9 }).map((_, i) => (
-                        <div key={i} className="h-56 rounded-2xl bg-gray-800/30 border border-white/5 animate-pulse" />
-                    ))
-                ) : visibleArticles.length > 0 ? (
-                    visibleArticles.map((article: ArticleBrief) => {
-                        const normalizedStatus = (article.status || '').toLowerCase();
-                        const canReview = normalizedStatus === 'candidate' || normalizedStatus === 'classified';
-                        const freshBreaking = isFreshBreaking(article.is_breaking, article.crawled_at);
-                        const insight = insightsMap.get(article.id);
+            {isLoading ? (
+                <div className={cn(viewMode === 'queue' ? 'space-y-4' : 'rounded-2xl border border-white/10 bg-gray-900/35 p-4')}>
+                    {Array.from({ length: viewMode === 'queue' ? 6 : 1 }).map((_, i) => (
+                        <div key={i} className={cn(viewMode === 'queue' ? 'h-44 rounded-2xl bg-gray-800/30 border border-white/5 animate-pulse' : 'h-72 rounded-2xl bg-gray-800/30 animate-pulse')} />
+                    ))}
+                </div>
+            ) : visibleArticles.length > 0 ? (
+                viewMode === 'queue' ? (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {visibleArticles.map((article: ArticleBrief, index: number) => {
+                            const freshBreaking = isFreshBreaking(article.is_breaking, article.crawled_at);
+                            const editHref = `/workspace-drafts?article_id=${article.id}`;
+                            const importanceChip = getImportanceChip(article);
+                            const importanceLabel = article.is_breaking
+                                ? 'عاجلة'
+                                : article.importance_score >= 8
+                                  ? 'عالية'
+                                  : article.importance_score >= 6
+                                    ? 'متوسطة'
+                                    : 'عادية';
 
-                        return (
-                            <div
-                                key={article.id}
-                                className={cn(
-                                    'rounded-2xl border app-surface p-5 transition-all',
-                                    'hover:border-gray-400/70 hover:shadow-md',
-                                    freshBreaking && 'ring-1 ring-red-500/30'
-                                )}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className={cn(
-                                        'w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0',
-                                        article.importance_score >= 8 ? 'bg-red-500/20 text-red-400' :
-                                            article.importance_score >= 6 ? 'bg-amber-500/20 text-amber-400' :
-                                                'bg-gray-500/20 text-gray-400',
-                                    )}>
-                                        <Star className="w-4 h-4 mb-0.5" />
-                                        <span className="text-lg font-bold">{article.importance_score}</span>
-                                    </div>
-
-                                    <div className="flex-1">
-                                        <h3 className="text-[1.38rem] font-extrabold leading-9 line-clamp-3 tracking-tight" style={{ color: 'var(--text-primary)' }} dir="rtl">
-                                            {article.title_ar || article.original_title}
-                                        </h3>
-
-                                        <div className="flex items-center gap-2 mt-2 mb-1">
-                                            {freshBreaking && (
-                                                <span className="px-2 py-0.5 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center gap-1 animate-pulse">
-                                                    <Zap className="w-3 h-3" /> عاجل
-                                                </span>
-                                            )}
-                                            <span className="text-[10px] app-text-muted">{article.source_name || '—'}</span>
-                                            <span className="text-[10px] text-gray-500 mr-auto flex items-center gap-1">
-                                                <Clock className="w-3 h-3" />
-                                                {formatRelativeTime(article.created_at || article.crawled_at)}
-                                            </span>
-                                        </div>
-
-                                        {article.summary && (
-                                            <p className="text-sm mt-2 line-clamp-2 leading-7" style={{ color: 'var(--text-muted)' }} dir="rtl">
-                                                {truncate(article.summary, 140)}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 flex flex-wrap items-center gap-2">
-                                    <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-medium border', getStatusColor((article.status || '').toLowerCase()))}>
-                                        {getStatusLabel(article.status)}
-                                    </span>
-                                    <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-medium border', categoryColor(article.category))}>
-                                        {getCategoryLabel(article.category)}
-                                    </span>
-                                    {(insight?.cluster_size || 0) > 1 && (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border border-cyan-500/30 text-cyan-300 bg-cyan-500/10">
-                                            حدث موحّد: {insight?.cluster_size}
-                                        </span>
-                                    )}
-                                    {(insight?.relation_count || 0) > 0 && (
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border border-fuchsia-500/30 text-fuchsia-300 bg-fuchsia-500/10">
-                                            علاقات: {insight?.relation_count}
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <a
-                                        href={article.original_url || '#'}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className={cn(
-                                            'px-3 py-2 rounded-xl border text-xs transition-colors flex items-center justify-center gap-2',
-                                            article.original_url
-                                                ? 'bg-white/5 border-white/10 text-gray-200 hover:text-white hover:border-white/20'
-                                                : 'bg-white/5 border-white/5 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        <ExternalLink className="w-4 h-4" />
-                                        المصدر
-                                    </a>
-                                    <a
-                                        href={`/news/${article.id}`}
-                                        className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-colors flex items-center justify-center"
-                                    >
-                                        التفاصيل
-                                    </a>
-                                </div>
-                                <div className="mt-2">
-                                    <a
-                                        href={`/workspace-drafts?article_id=${article.id}`}
-                                        className="block w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-300 hover:text-white hover:border-white/20 transition-colors text-center"
-                                    >
-                                        فتح في Workspace
-                                    </a>
-                                </div>
-                                {canUseMultimedia && (
-                                    <div className="mt-2">
-                                        <a
-                                            href="/services/multimedia"
-                                            className="block w-full px-3 py-2 rounded-xl bg-violet-500/15 border border-violet-500/30 text-xs text-violet-200 hover:bg-violet-500/25 transition-colors text-center"
-                                        >
-                                            توليد وسائط الخبر
-                                        </a>
-                                    </div>
-                                )}
-
-                                {isSocialRole && ['ready_for_manual_publish', 'published'].includes(normalizedStatus) && (
-                                    <div className="mt-2">
-                                        <button
-                                            onClick={() => socialVariantsMutation.mutate(article.id)}
-                                            disabled={socialVariantsMutation.isPending}
-                                            className="w-full px-3 py-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-xs text-cyan-200 hover:bg-cyan-500/25 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            <Copy className="w-3.5 h-3.5" /> نسخ نسخ السوشيال الجاهزة
-                                        </button>
-                                    </div>
-                                )}
-
-                                <div className="mt-3 grid grid-cols-3 gap-2">
-                                    <button
-                                        onClick={() =>
-                                            {
-                                                if (typeof window !== 'undefined' && !window.confirm('تأكيد الموافقة على الخبر؟')) {
-                                                    return;
-                                                }
-                                                decideMutation.mutate(
-                                                    {
-                                                        articleId: article.id,
-                                                        decision: 'approve',
-                                                    },
-                                                    {
-                                                        onSuccess: (result) => {
-                                                            const target = result?.workId
-                                                                ? `/workspace-drafts?article_id=${article.id}&work_id=${result.workId}`
-                                                                : `/workspace-drafts?article_id=${article.id}`;
-                                                            router.push(target);
-                                                        },
-                                                    },
-                                                );
-                                            }
+                            return (
+                                <div key={article.id} className="h-full">
+                                    <WorkflowCard
+                                        title={article.title_ar || article.original_title}
+                                        subtitle={`المصدر: ${article.source_name || 'غير محدد'}`}
+                                        meta={
+                                            <div className="flex flex-wrap items-center gap-2 text-slate-400">
+                                                <span>الكاتب: غير معيّن</span>
+                                                <span className="text-slate-600">•</span>
+                                                <span>الأهمية: {importanceLabel}</span>
+                                            </div>
                                         }
-                                        disabled={decideMutation.isPending || !canReview || !canApproveReject}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] flex items-center justify-center gap-1 transition-colors',
-                                            canReview && canApproveReject
-                                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        <CheckCircle className="w-3 h-3" /> موافقة
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (typeof window !== 'undefined' && !window.confirm('تأكيد إرسال الخبر لإعادة الصياغة؟')) {
-                                                return;
-                                            }
-                                            decideMutation.mutate({ articleId: article.id, decision: 'rewrite' });
-                                        }}
-                                        disabled={decideMutation.isPending || !canReview || !canRewrite}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] flex items-center justify-center gap-1 transition-colors',
-                                            canReview && canRewrite
-                                                ? 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        <RotateCw className="w-3 h-3" /> إعادة
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedArticle(article.id)}
-                                        disabled={!canReview || !canApproveReject}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] flex items-center justify-center gap-1 transition-colors',
-                                            canReview && canApproveReject
-                                                ? 'bg-red-500/15 border-red-500/30 text-red-300 hover:bg-red-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        <XCircle className="w-3 h-3" /> رفض
-                                    </button>
+                                        chips={[
+                                            importanceChip,
+                                            ...(freshBreaking ? [{ label: 'عاجل', className: 'border-red-500/30 bg-red-500/10 text-red-200' }] : []),
+                                        ]}
+                                        reason={getReasonForArticle(article)}
+                                        nextActionLabel={getNextActionForArticle(article).label}
+                                        timestamp={article.created_at || article.crawled_at}
+                                        tone={getImportanceTone(article)}
+                                        compact
+                                        hideReason
+                                        hideNextAction
+                                        actions={
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <a
+                                                    href={article.original_url || '#'}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className={cn(
+                                                        'px-3 py-2 rounded-xl border text-[11px] transition-colors flex items-center justify-center gap-2',
+                                                        article.original_url
+                                                            ? 'bg-white/5 border-white/10 text-gray-200 hover:text-white hover:border-white/20'
+                                                            : 'bg-white/5 border-white/5 text-gray-500 cursor-not-allowed',
+                                                    )}
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                    المصدر
+                                                </a>
+                                                <Link
+                                                    href={`/news/${article.id}`}
+                                                    className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors flex items-center justify-center"
+                                                >
+                                                    التفاصيل
+                                                </Link>
+                                                <Link
+                                                    href={editHref}
+                                                    data-tutorial={showNewsOverlay && index === 0 ? 'news-first-edit' : undefined}
+                                                    onClick={() =>
+                                                        trackNextAction('news', 'تحرير', {
+                                                            ...surfaceDetails,
+                                                            queue_view: 'queue',
+                                                            article_id: article.id,
+                                                            article_status: article.status,
+                                                            target_href: editHref,
+                                                        })
+                                                    }
+                                                    title="افتح المحرر لبدء التحرير"
+                                                    className="px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-[11px] text-cyan-100 hover:bg-cyan-500/20 transition-colors flex items-center justify-center"
+                                                >
+                                                    التحرير
+                                                </Link>
+                                            </div>
+                                        }
+                                    />
                                 </div>
-
-                                {selectedArticle === article.id && canReview && (
-                                    <div className="mt-3 flex items-center gap-2">
-                                        <input
-                                            type="text"
-                                            value={rejectReason}
-                                            onChange={(e) => setRejectReason(e.target.value)}
-                                            placeholder="سبب الرفض (إلزامي)..."
-                                            className="flex-1 h-10 px-3 rounded-xl bg-white/5 border border-white/5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-red-500/40"
-                                            dir="rtl"
-                                        />
-                                        <button
-                                            onClick={() => {
-                                                const reason = rejectReason.trim();
-                                                if (!reason) {
-                                                    setErrorMessage('سبب الرفض مطلوب');
-                                                    return;
-                                                }
-                                                if (typeof window !== 'undefined' && !window.confirm('تأكيد رفض الخبر؟')) {
-                                                    return;
-                                                }
-                                                decideMutation.mutate({ articleId: article.id, decision: 'reject', reason });
-                                            }}
-                                            disabled={decideMutation.isPending || !rejectReason.trim()}
-                                            className="px-4 py-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-xs font-medium"
-                                        >
-                                            تأكيد الرفض
-                                        </button>
-                                    </div>
-                                )}
-
-                                <div className="mt-2 grid grid-cols-3 gap-2">
-                                    <button
-                                        onClick={() => processMutation.mutate({ articleId: article.id, action: 'summarize' })}
-                                        disabled={processMutation.isPending || !canProcess}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] transition-colors',
-                                            canProcess
-                                                ? 'bg-sky-500/15 border-sky-500/30 text-sky-300 hover:bg-sky-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        تلخيص
-                                    </button>
-                                    <button
-                                        onClick={() => processMutation.mutate({ articleId: article.id, action: 'translate' })}
-                                        disabled={processMutation.isPending || !canProcess}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] transition-colors',
-                                            canProcess
-                                                ? 'bg-violet-500/15 border-violet-500/30 text-violet-300 hover:bg-violet-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        ترجمة
-                                    </button>
-                                    <button
-                                        onClick={() => processMutation.mutate({ articleId: article.id, action: 'fact_check' })}
-                                        disabled={processMutation.isPending || !canProcess}
-                                        className={cn(
-                                            'px-2 py-2 rounded-xl border text-[10px] transition-colors',
-                                            canProcess
-                                                ? 'bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300 hover:bg-fuchsia-500/25'
-                                                : 'bg-white/5 border-white/10 text-gray-500 cursor-not-allowed'
-                                        )}
-                                    >
-                                        تحقق
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })
-                ) : (
-                    <div className="col-span-full text-center py-16 rounded-2xl bg-gray-800/20 border border-white/5">
-                        لا توجد أخبار حالياً
+                            );
+                        })}
                     </div>
-                )}
-            </div>
-
+                ) : (
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-gray-900/35">
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-white/5 text-slate-300">
+                                    <tr>
+                                        <th className="px-4 py-3 text-right font-medium">العنوان</th>
+                                        <th className="px-4 py-3 text-right font-medium">الحالة</th>
+                                        <th className="px-4 py-3 text-right font-medium">المصدر</th>
+                                        <th className="px-4 py-3 text-right font-medium">الأهمية</th>
+                                        <th className="px-4 py-3 text-right font-medium">الوقت</th>
+                                        <th className="px-4 py-3 text-right font-medium">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {visibleArticles.map((article) => {
+                                        const nextAction = getNextActionForArticle(article);
+                                        return (
+                                            <tr key={article.id} className="border-t border-white/5 text-slate-200">
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-semibold text-white">{truncate(article.title_ar || article.original_title, 90)}</div>
+                                                    <div className="mt-1 text-[11px] text-slate-500">{formatRelativeTime(article.created_at || article.crawled_at)}</div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <span className={cn('px-2 py-0.5 rounded-md text-[10px] font-medium border', getStatusColor((article.status || '').toLowerCase()))}>
+                                                        {getStatusLabel(article.status)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 align-top text-xs text-slate-300">{article.source_name || '—'}</td>
+                                                <td className="px-4 py-3 align-top text-xs text-slate-300">{article.importance_score}</td>
+                                                <td className="px-4 py-3 align-top text-[11px] text-slate-500">{formatRelativeTime(article.created_at || article.crawled_at)}</td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <Link
+                                                        href={nextAction.href}
+                                                        onClick={() =>
+                                                            trackNextAction('news', nextAction.label, {
+                                                                ...surfaceDetails,
+                                                                queue_view: 'table',
+                                                                article_id: article.id,
+                                                                article_status: article.status,
+                                                                target_href: nextAction.href,
+                                                            })
+                                                        }
+                                                        className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-500/20"
+                                                    >
+                                                        {nextAction.label}
+                                                        <ArrowLeft className="w-3.5 h-3.5" />
+                                                    </Link>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )
+            ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-gray-900/20 px-6 py-10 text-center text-sm text-slate-400">
+                    لا توجد أخبار تطابق هذا الفلتر الآن.
+                </div>
+            )}
             {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-white/5">
                     <button
@@ -899,8 +890,31 @@ function NewsPageContent() {
                     </div>
                 </div>
             )}
+
+            <WorkflowHelpPanel
+                title="كيف نستخدم طابور الأخبار؟"
+                items={[
+                    {
+                        title: 'لماذا يظهر هنا؟',
+                        description: 'كل خبر يوضح سبب ظهوره في الطابور: عاجل، مرشح جديد، جاهز للاعتماد، أو مرتبط بحدث موحّد.',
+                    },
+                    {
+                        title: 'الإجراء التالي',
+                        description: 'ابدأ دائمًا بالزر الرئيسي المقترح، ثم استخدم الإجراءات الإضافية فقط عند الحاجة.',
+                    },
+                    {
+                        title: 'إجراءات إضافية',
+                        description: 'الترجمة، التلخيص، التحقق، والقرارات التحريرية بقيت موجودة لكنها لا تزاحم السطح الأول.',
+                    },
+                ]}
+            />
         </div>
     );
+}
+
+function NewsPageShell() {
+    const searchParams = useSearchParams();
+    return <NewsPageContent key={searchParams.toString()} />;
 }
 
 export default function NewsPage() {
@@ -912,8 +926,7 @@ export default function NewsPage() {
                 </div>
             }
         >
-            <NewsPageContent />
+            <NewsPageShell />
         </Suspense>
     );
 }
-

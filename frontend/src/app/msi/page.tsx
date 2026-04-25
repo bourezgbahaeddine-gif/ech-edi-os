@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Gauge, Play, RefreshCw } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-import { msiApi, type MsiReport } from '@/lib/api';
+import { API_BASE, msiApi, type MsiReport } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type Mode = 'daily' | 'weekly';
@@ -33,7 +33,7 @@ export default function MsiPage() {
     const isDirector = role === 'director';
     const canRun = isDirector;
     const canManageWatchlist = isDirector;
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/$/, '');
+    const apiBase = API_BASE;
 
     const [profileId, setProfileId] = useState('institution_presidency');
     const [entity, setEntity] = useState('');

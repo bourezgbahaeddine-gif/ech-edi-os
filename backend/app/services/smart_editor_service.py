@@ -9,6 +9,16 @@ from typing import Any
 import bleach
 from bs4 import BeautifulSoup
 
+try:
+    from app.services.ai_service import ai_service
+except Exception:  # pragma: no cover - optional AI backend
+    ai_service = None
+
+try:
+    from app.services.fact_check_tools_service import fact_check_tools_service
+except Exception:  # pragma: no cover - optional external service
+    fact_check_tools_service = None
+
 ALLOWED_TAGS = [
     "p",
     "h1",
@@ -61,6 +71,47 @@ TEMPLATE_NOISE_PATTERNS = [
     r"(?i)\btemplate\b",
 ]
 
+STYLE_RULES = [
+    {
+        "id": "avoid_qam_ba",
+        "pattern": r"\bقام(?:ت|وا|ن)?\s+ب",
+        "message": "صياغة ثقيلة تعتمد على «قام بـ».",
+        "rule": "يُفضّل استخدام الفعل المباشر بدل «قام بـ».",
+        "replacement": "استخدم الفعل المباشر (مثل: زار/افتتح/أعلن).",
+        "severity": "medium",
+        "confidence": 0.7,
+    },
+    {
+        "id": "avoid_tamma_masdar",
+        "pattern": r"\bتم\s+\w+",
+        "message": "صياغة مبنية للمجهول «تم + مصدر».",
+        "rule": "تجنّب «تم + مصدر» عندما توجد صياغة عربية أقوى.",
+        "replacement": "استخدم الفعل المباشر (مثل: أُعلن/أُنشئ/أُقرّ).",
+        "severity": "medium",
+        "confidence": 0.65,
+    },
+    {
+        "id": "avoid_akkada_bi",
+        "pattern": r"\bأكد\s+بأن\b",
+        "message": "تركيب غير مفضّل تحريرياً «أكد بأن».",
+        "rule": "يُفضّل «أكد أن» بدلاً من «أكد بأن».",
+        "replacement": "أكد أن",
+        "severity": "low",
+        "confidence": 0.8,
+    },
+    {
+        "id": "avoid_da3a_ila_darura",
+        "pattern": r"\bدعا\s+إلى\s+ضرورة\b",
+        "message": "حشو لغوي في «دعا إلى ضرورة».",
+        "rule": "يُفضّل الاختصار: «دعا إلى المشاركة».",
+        "replacement": "دعا إلى المشاركة",
+        "severity": "low",
+        "confidence": 0.75,
+    },
+]
+
+HEADLINE_VAGUE_PATTERN = r"\b(هذا|هذه|هؤلاء|ذلك|تلك)\b"
+
 
 @dataclass
 class DiffResult:
@@ -72,12 +123,7 @@ class DiffResult:
 class SmartEditorService:
     @staticmethod
     def _get_ai_service():
-        try:
-            from app.services.ai_service import ai_service
-
-            return ai_service
-        except Exception:
-            return None
+        return ai_service
 
     @staticmethod
     def _contains_html(value: str) -> bool:
@@ -125,6 +171,95 @@ class SmartEditorService:
         if len(combined) > max_len:
             combined = combined[: max_len - 3].rstrip() + "..."
         return combined
+
+    @staticmethod
+    def _ensure_title_length(value: str, fallback: str, min_len: int = 40, max_len: int = 60) -> str:
+        text = re.sub(r"\s+", " ", (value or "").strip())
+        backup = re.sub(r"\s+", " ", (fallback or "").strip())
+        if not text:
+            text = backup
+        if len(text) > max_len:
+            return text[: max_len - 3].rstrip() + "..."
+        if len(text) >= min_len:
+            return text
+        combined = f"{text} {backup}".strip()
+        combined = re.sub(r"\s+", " ", combined)
+        if len(combined) > max_len:
+            combined = combined[: max_len - 3].rstrip() + "..."
+        return combined
+
+    @staticmethod
+    def _contains_phrase(text: str, phrase: str) -> bool:
+        if not text or not phrase:
+            return False
+        return phrase.strip().lower() in text.strip().lower()
+
+    @staticmethod
+    def _ensure_title_with_phrase(title: str, phrase: str, fallback: str, min_len: int, max_len: int) -> str:
+        base = re.sub(r"\s+", " ", (title or "").strip())
+        if phrase and not SmartEditorService._contains_phrase(base, phrase):
+            if base:
+                base = f"{phrase} | {base}"
+            else:
+                base = phrase
+        return SmartEditorService._ensure_title_length(base, fallback, min_len=min_len, max_len=max_len)
+
+    @staticmethod
+    def _ensure_meta_with_phrase(meta: str, phrase: str, fallback: str, min_len: int, max_len: int) -> str:
+        base = re.sub(r"\s+", " ", (meta or "").strip())
+        if phrase and not SmartEditorService._contains_phrase(base, phrase):
+            base = f"{phrase} - {base}".strip(" -")
+        combined = SmartEditorService._ensure_meta_length(base, fallback, min_len=min_len, max_len=max_len)
+        if phrase and not SmartEditorService._contains_phrase(combined, phrase):
+            trimmed = f"{phrase} - {fallback}".strip(" -")
+            combined = SmartEditorService._ensure_meta_length(trimmed, fallback, min_len=min_len, max_len=max_len)
+        return combined
+
+    @staticmethod
+    def _extract_first_paragraph(html: str, plain_text: str) -> str:
+        if not html:
+            return (plain_text or "").strip().split("\n")[0]
+        soup = BeautifulSoup(html, "html.parser")
+        first = soup.find("p")
+        if first:
+            return first.get_text(" ", strip=True)
+        return (plain_text or "").strip().split("\n")[0]
+
+    @staticmethod
+    def _extract_headings(html: str) -> list[str]:
+        if not html:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        headings = [tag.get_text(" ", strip=True) for tag in soup.find_all(["h2", "h3"])]
+        return [h for h in headings if h]
+
+    @staticmethod
+    def _extract_links(html: str) -> tuple[list[str], list[str]]:
+        if not html:
+            return [], []
+        soup = BeautifulSoup(html, "html.parser")
+        hrefs: list[str] = []
+        texts: list[str] = []
+        for tag in soup.find_all("a"):
+            href = str(tag.get("href") or "").strip()
+            if href:
+                hrefs.append(href)
+                texts.append(tag.get_text(" ", strip=True) or "")
+        return hrefs, texts
+
+    @staticmethod
+    def _extract_images(html: str) -> tuple[int, int]:
+        if not html:
+            return 0, 0
+        soup = BeautifulSoup(html, "html.parser")
+        imgs = soup.find_all("img")
+        total = len(imgs)
+        with_alt = 0
+        for img in imgs:
+            alt = str(img.get("alt") or "").strip()
+            if alt:
+                with_alt += 1
+        return total, with_alt
 
     @staticmethod
     def _uniq(values: list[str], limit: int) -> list[str]:
@@ -268,11 +403,103 @@ class SmartEditorService:
                         "before": str(item.get("before") or "").strip()[:280],
                         "after": str(item.get("after") or "").strip()[:280],
                         "count": item.get("count"),
+                        "rule": str(item.get("rule") or "").strip()[:280],
+                        "severity": str(item.get("severity") or "").strip()[:32],
+                        "confidence": item.get("confidence"),
                     }
                 )
             elif isinstance(item, str):
-                out.append({"kind": "language", "message": item.strip()[:280], "before": "", "after": "", "count": None})
+                out.append(
+                    {
+                        "kind": "language",
+                        "message": item.strip()[:280],
+                        "before": "",
+                        "after": "",
+                        "count": None,
+                        "rule": "",
+                        "severity": "",
+                        "confidence": None,
+                    }
+                )
         return [x for x in out if x.get("message")]
+
+    @staticmethod
+    def _dedupe_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        for item in issues or []:
+            key = f"{item.get('kind')}::{item.get('message')}::{item.get('before')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+        return out
+
+    @staticmethod
+    def _editorial_style_issues(title: str, text: str) -> list[dict[str, Any]]:
+        issues: list[dict[str, Any]] = []
+        clean_title = (title or "").strip()
+        clean_text = (text or "").strip()
+
+        if clean_title and re.search(HEADLINE_VAGUE_PATTERN, clean_title):
+            issues.append(
+                {
+                    "kind": "headline",
+                    "message": "العنوان يستخدم ضمير إشارة وقد يكون مبهماً.",
+                    "before": clean_title[:160],
+                    "after": "",
+                    "rule": "العنوان يجب أن يفصح عن العنصر الخبري الأساسي.",
+                    "severity": "medium",
+                    "confidence": 0.7,
+                }
+            )
+        if clean_title:
+            words = re.findall(r"\\S+", clean_title)
+            if len(words) < 5 or len(words) > 16:
+                issues.append(
+                    {
+                        "kind": "headline",
+                        "message": "طول العنوان غير مناسب (قصير جداً أو طويل جداً).",
+                        "before": clean_title[:160],
+                        "after": "",
+                        "rule": "طول العنوان الصحفي المفضل بين 8 و14 كلمة.",
+                        "severity": "low",
+                        "confidence": 0.6,
+                    }
+                )
+
+        for rule in STYLE_RULES:
+            for match in re.finditer(rule["pattern"], clean_text):
+                snippet = clean_text[max(0, match.start() - 40) : match.end() + 40]
+                issues.append(
+                    {
+                        "kind": "style",
+                        "message": rule["message"],
+                        "before": snippet[:180],
+                        "after": rule.get("replacement", ""),
+                        "rule": rule["rule"],
+                        "severity": rule["severity"],
+                        "confidence": rule["confidence"],
+                    }
+                )
+
+        sentences = [s.strip() for s in re.split(r"[.!؟\\n]+", clean_text) if s.strip()]
+        for sentence in sentences:
+            if len(re.findall(r"\\S+", sentence)) >= 35:
+                issues.append(
+                    {
+                        "kind": "clarity",
+                        "message": "جملة طويلة قد تُضعف الوضوح وتحتاج اختصاراً.",
+                        "before": sentence[:180],
+                        "after": "",
+                        "rule": "يفضل تقسيم الجمل الطويلة لضمان وضوح القراءة.",
+                        "severity": "medium",
+                        "confidence": 0.55,
+                    }
+                )
+                break
+
+        return issues
 
     async def rewrite_suggestion(
         self,
@@ -284,17 +511,24 @@ class SmartEditorService:
         instruction: str = "",
     ) -> dict[str, Any]:
         prompt = f"""
-أنت مساعد تحرير صحفي داخل غرفة أخبار الشروق.
-المطلوب: إعادة صياغة النص بصياغة عربية صحفية واضحة فقط.
+أنت محرّر أول في غرفة أخبار الشروق.
+المطلوب: تحسين المسودة الحالية تحريرياً ولغوياً دون تغيير المعنى أو اختراع معلومات.
 
 أعد JSON فقط بالمفاتيح:
 title, body_html, note
 
 قواعد إلزامية:
-- لا تضف أي معلومة غير موجودة في السياق.
-- ممنوع أي تعليقات جانبية مثل: ملاحظة، مثال، يمكنني، آمل.
-- body_html يجب أن يحتوي H1 واحد فقط، ثم فقرات HTML نظيفة.
-- لا تستخدم markdown ولا code fences.
+- لا تضف أي معلومة غير موجودة في السياق أو المتن الأصلي.
+- حافظ على الأسماء والأرقام والتواريخ والاقتباسات كما وردت.
+- لا تحذف معلومة أساسية؛ يجوز الاختصار فقط للتكرار والحشو.
+- حسّن ترتيب الفقرات وفق الهرم المقلوب: أهم ما في البداية ثم التفاصيل والخلفية.
+- جُمَل قصيرة وواضحة، فقرات من 2-4 جمل.
+- تجنّب "تم + مصدر" و"قام بـ" متى أمكن.
+- ممنوع أي تعليقات جانبية أو شرح خارج النص.
+- body_html يجب أن يكون HTML نظيفاً مع H1 واحد فقط ثم فقرات <p>، و<h2> اختياري.
+- حافظ على الروابط الموجودة، وأضف رابطاً داخلياً واحداً على الأقل إن لم يوجد (href يبدأ بـ /news أو /).
+- حافظ على طول النص قريباً من الأصل (±20%).
+- لا تستخدم Markdown ولا code fences.
 
 النمط: {mode}
 تعليمات إضافية: {instruction or "لا يوجد"}
@@ -352,18 +586,21 @@ title, body_html, note
         local_html = self._text_to_html(draft_title or "نسخة منقحة", local_after_text) if local_after_text else draft_html
 
         prompt = f"""
-أنت مدقق لغوي وصحفي في غرفة أخبار.
-المطلوب: تدقيق إملائي ونحوي وترقيمي لنص عربي جاهز للنشر.
+أنت مدقق لغوي وصحفي في غرفة أخبار الشروق.
+المطلوب: تدقيق لغوي دقيق للمسودة دون إعادة صياغة شاملة أو تغيير المعنى.
 
 أعد JSON فقط بالمفاتيح:
 title, body_html, note, issues
 
 شروط إلزامية:
-- body_html يجب أن يكون HTML صالحاً مع H1 واحد وفقرة/فقرات واضحة.
-- لا تضف معلومات جديدة غير موجودة في النص الأصلي.
-- أصلح فقط: الإملاء، النحو، الترقيم، وضوح الصياغة.
-- issues يجب أن تكون قائمة مختصرة بعناصر من الشكل:
-  kind, message, before, after
+- لا تضف أي معلومة جديدة غير موجودة في النص الأصلي.
+- أصلح فقط: الإملاء، النحو، الترقيم، الاتساق الأسلوبي الخفيف.
+- يُسمح باستبدال صيغ ثقيلة (مثل "تم + مصدر" أو "أكد بأن") بصيغ عربية أخف عند الحاجة.
+- لا تغيّر ترتيب الفقرات أو بنية الخبر.
+- body_html يجب أن يكون HTML صالحاً مع H1 واحد وفقرات واضحة.
+- issues قائمة مختصرة بعناصر: kind, message, before, after, rule, severity, confidence.
+- kind يجب أن يكون واحداً من: spelling | grammar | punctuation | style | clarity | headline.
+- severity واحدة من: critical | high | medium | low.
 - ممنوع أي شروحات خارج JSON.
 
 العنوان الحالي:
@@ -395,6 +632,9 @@ title, body_html, note, issues
         issues = self._normalize_proofread_issues(data.get("issues"))
         if not issues:
             issues = local_issues
+        style_issues = self._editorial_style_issues(title, after_text)
+        if style_issues:
+            issues = self._dedupe_issues(issues + style_issues)
 
         diff_text = self.build_diff(plain_before, after_text)
         diff_html = self.build_diff(draft_html, sanitized)
@@ -414,24 +654,85 @@ title, body_html, note, issues
             "generated_at": datetime.utcnow().isoformat(),
         }
 
+    async def inline_suggestion(
+        self,
+        *,
+        text: str,
+        action: str,
+        instruction: str = "",
+        source_text: str = "",
+    ) -> dict[str, Any]:
+        action = (action or "rewrite").strip().lower()
+        clean_input = (text or "").strip()
+        if not clean_input:
+            return {"text": ""}
+
+        action_map = {
+            "rewrite": "أعد صياغة المقطع بأسلوب صحفي واضح دون تغيير المعنى.",
+            "shorten": "اختصر المقطع بنسبة 30-40% مع الحفاظ على كل المعلومات الأساسية.",
+            "expand": "وسّع المقطع بشرح إضافي ضمن نفس المعنى دون إضافة حقائق جديدة.",
+            "clarify": "بسّط المقطع بجمل أقصر ووضوح أكبر دون تغيير المحتوى.",
+        }
+        action_prompt = action_map.get(action, action_map["rewrite"])
+
+        prompt = f"""
+أنت محرر في غرفة أخبار الشروق.
+المطلوب: {action_prompt}
+
+قواعد إلزامية:
+- لا تضف أي معلومة جديدة غير موجودة في المقطع أو في السياق.
+- حافظ على الأسماء والأرقام والتواريخ كما هي.
+- أعد النص الناتج فقط دون شروح أو تعليقات أو تنسيق إضافي.
+- لا تستخدم Markdown أو code fences.
+
+السياق (اختياري):
+{(source_text or "")[:1500]}
+
+المقطع:
+{clean_input}
+"""
+        ai = self._get_ai_service()
+        if not ai:
+            return {"text": clean_input}
+
+        raw = await ai.generate_text(prompt)
+        cleaned = self._strip_side_comments(raw)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+        if not cleaned or self._contains_template_noise(cleaned):
+            cleaned = clean_input
+        return {"text": cleaned, "action": action}
+
     async def headline_suggestions(self, *, source_text: str, draft_title: str) -> list[dict[str, str]]:
         prompt = f"""
-أنت محرر عناوين في الشروق.
-أعد 5 عناوين فقط بصيغة JSON array.
-كل عنصر يجب أن يحتوي:
-label, headline
+        أنت محرر عناوين إخباري محترف باللغة العربية.
+        أريد اقتراح 5 عناوين مختلفة للمادة التالية.
 
-الترتيب:
-official, breaking, seo, engaging, mobile_short
+        قواعد العناوين:
+        - التزم فقط بالمعلومات الموجودة في النص.
+        - لا تبالغ ولا تستخدم لغة دعائية.
+        - اجعل العنوان واضحًا ومباشرًا.
+        - تجنب التكرار والحشو.
 
-بدون أي نص إضافي.
+        أعد النتيجة على شكل JSON array يحتوي عناصر بالشكل:
+        label, headline
 
-السياق:
-{source_text[:5000]}
+        التصنيفات المطلوبة:
+        official, breaking, seo, engaging, mobile_short
 
-العنوان الحالي:
-{draft_title}
-"""
+        شرح التصنيفات:
+        - official: عنوان إخباري رسمي من 10 إلى 14 كلمة.
+        - breaking: صياغة عاجلة تبدأ بـ "عاجل" إذا كان الخبر مناسبًا.
+        - seo: عنوان غني بالكلمات المفتاحية دون تضليل.
+        - engaging: عنوان جذاب دون مبالغة.
+        - mobile_short: عنوان مختصر مناسب للموبايل (حتى 55 حرفًا).
+
+        النص:
+        {source_text[:5000]}
+
+        العنوان الحالي:
+        {draft_title}
+        """
+
         ai = self._get_ai_service()
         data = await ai.generate_json(prompt) if ai else {}
         if isinstance(data, list):
@@ -457,30 +758,35 @@ official, breaking, seo, engaging, mobile_short
 
     async def seo_suggestions(self, *, source_text: str, draft_title: str, draft_html: str) -> dict[str, Any]:
         prompt = f"""
-You are a newsroom SEO editor. Return production-ready Yoast SEO fields.
-Return JSON only with keys:
-seo_title, meta_description, focus_keyphrase, secondary_keyphrases, keywords, tags, slug, og_title, og_description, twitter_title, twitter_description
+        أنت محرر SEO لموقع إخباري باللغة العربية.
+        أريد عناصر SEO كاملة للمادة التالية.
 
-Mandatory rules:
-- seo_title must be clear, journalistic, 50-60 chars.
-- meta_description must be between 140 and 155 chars.
-- focus_keyphrase must be one concise phrase.
-- secondary_keyphrases must contain 3 items.
-- keywords must contain 6 items.
-- tags must contain 6 items.
-- slug must be kebab-case.
-- og/twitter fields should be publish-ready and non-clickbait.
-- no explanations outside JSON.
+        أعد JSON فقط بالمفاتيح:
+        seo_title, meta_description, focus_keyphrase, secondary_keyphrases, keywords, tags, slug, og_title, og_description, twitter_title, twitter_description
 
-Headline:
-{draft_title}
+        قواعد مهمة:
+        - التزم بالمحتوى ولا تضف معلومات جديدة.
+        - لا تستخدم عبارات دعائية أو مضللة.
+        - seo_title بين 50 و60 حرفًا.
+        - meta_description بين 140 و155 حرفًا.
+        - focus_keyphrase عبارة مركزة واضحة.
+        - secondary_keyphrases عددها 3.
+        - keywords عددها 6 مفصولة بفواصل.
+        - tags عددها 6 قصيرة.
+        - slug بصيغة kebab-case.
+        - اجعل og/twitter مختصرين وواضحين.
+        - أعد JSON فقط دون أي شرح.
 
-Body:
-{draft_html[:9000]}
+        العنوان الحالي:
+        {draft_title}
 
-Context:
-{source_text[:4000]}
-"""
+        النص:
+        {draft_html[:9000]}
+
+        المصدر:
+        {source_text[:4000]}
+        """
+
         ai = self._get_ai_service()
         data = await ai.generate_json(prompt) if ai else {}
 
@@ -489,11 +795,13 @@ Context:
 
         seo_title = self._strip_side_comments(str(data.get("seo_title") or draft_title or "").strip())[:60]
         meta = self._strip_side_comments(str(data.get("meta_description") or "").strip())
-        meta = self._ensure_meta_length(meta, fallback_meta, min_len=140, max_len=155)
 
         focus_keyphrase = self._strip_side_comments(str(data.get("focus_keyphrase") or "").strip())
         if not focus_keyphrase:
             focus_keyphrase = self._strip_side_comments((draft_title or "").split(" - ")[0].strip())
+
+        seo_title = self._ensure_title_with_phrase(seo_title, focus_keyphrase, draft_title or "", min_len=40, max_len=60)
+        meta = self._ensure_meta_with_phrase(meta, focus_keyphrase, fallback_meta, min_len=140, max_len=155)
 
         secondary = data.get("secondary_keyphrases") or []
         keywords = data.get("keywords") or []
@@ -514,6 +822,10 @@ Context:
             keywords = self._uniq(tokens, 6)
         if not tags:
             tags = keywords[:6]
+        if focus_keyphrase and focus_keyphrase not in keywords:
+            keywords = self._uniq([focus_keyphrase] + keywords, 6)
+        if focus_keyphrase and focus_keyphrase not in tags:
+            tags = self._uniq([focus_keyphrase] + tags, 6)
 
         slug_raw = self._strip_side_comments(str(data.get("slug") or "").strip())
         slug = self._normalize_slug(slug_raw or draft_title or focus_keyphrase)
@@ -533,6 +845,108 @@ Context:
             max_len=155,
         )
 
+        first_paragraph = self._extract_first_paragraph(draft_html, plain_text)
+        headings = self._extract_headings(draft_html)
+        hrefs, link_texts = self._extract_links(draft_html)
+        image_count, images_with_alt = self._extract_images(draft_html)
+
+        def _is_internal(href: str) -> bool:
+            clean = (href or "").strip().lower()
+            if not clean:
+                return False
+            if clean.startswith("/"):
+                return True
+            if not clean.startswith("http"):
+                return True
+            return any(token in clean for token in ["echorouk", "echoroukonline"])
+
+        internal_links = sum(1 for href in hrefs if _is_internal(href))
+        external_links = sum(1 for href in hrefs if href and href.lower().startswith("http") and not _is_internal(href))
+
+        word_count = len(re.findall(r"\S+", plain_text))
+        sentences = [s.strip() for s in re.split(r"[.!?\u061f]+", plain_text) if s.strip()]
+        paragraphs = []
+        if draft_html:
+            soup = BeautifulSoup(draft_html, "html.parser")
+            paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p") if p.get_text(" ", strip=True)]
+        if not paragraphs:
+            paragraphs = [p.strip() for p in re.split(r"\n{2,}", plain_text) if p.strip()]
+
+        transition_words = [
+            "\u0628\u0627\u0644\u0625\u0636\u0627\u0641\u0629",
+            "\u0645\u0646 \u062c\u0647\u0629 \u0623\u062e\u0631\u0649",
+            "\u0644\u0630\u0644\u0643",
+            "\u0643\u0645\u0627 \u0623\u0646",
+            "\u0641\u064a \u0627\u0644\u0645\u0642\u0627\u0628\u0644",
+            "\u0645\u0646 \u0646\u0627\u062d\u064a\u0629 \u0623\u062e\u0631\u0649",
+            "\u0623\u062e\u064a\u0631\u0627\u064b",
+            "\u0628\u064a\u0646\u0645\u0627",
+        ]
+        has_transition = any(word in plain_text for word in transition_words)
+
+        passive_markers = [
+            "\u062a\u0645",
+            "\u064a\u062a\u0645",
+            "\u062c\u0631\u0649",
+            "\u064a\u062c\u0631\u064a",
+            "\u0642\u062f \u062a\u0645",
+        ]
+        passive_count = sum(1 for sentence in sentences if any(marker in sentence for marker in passive_markers))
+        passive_ratio = passive_count / max(1, len(sentences))
+
+        long_sentence_count = sum(1 for sentence in sentences if len(sentence.split()) > 25)
+        long_paragraph_count = sum(1 for paragraph in paragraphs if len(paragraph.split()) > 120)
+
+        first_words = []
+        for sentence in sentences:
+            words = sentence.split()
+            if words:
+                first_words.append(words[0])
+        consecutive_starts = sum(
+            1 for idx in range(1, len(first_words)) if first_words[idx] == first_words[idx - 1]
+        )
+
+        keyphrase_in_title = self._contains_phrase(seo_title, focus_keyphrase)
+        keyphrase_in_meta = self._contains_phrase(meta, focus_keyphrase)
+        keyphrase_in_intro = self._contains_phrase(first_paragraph, focus_keyphrase)
+        keyphrase_in_headings = any(self._contains_phrase(item, focus_keyphrase) for item in headings)
+
+        keyphrase_occurrences = (
+            len(re.findall(re.escape(focus_keyphrase), plain_text, flags=re.IGNORECASE))
+            if focus_keyphrase
+            else 0
+        )
+        keyphrase_density = (
+            round((keyphrase_occurrences / max(1, word_count)) * 100, 2) if word_count else 0.0
+        )
+        keyphrase_density_ok = 0.5 <= keyphrase_density <= 2.5
+
+        competing_links = 0
+        if focus_keyphrase:
+            competing_links = sum(
+                1 for text in link_texts if self._contains_phrase(text, focus_keyphrase)
+            )
+
+        yoast_checks = [
+            {"code": "focus_keyphrase", "status": "ok" if focus_keyphrase else "warn"},
+            {"code": "keyphrase_in_title", "status": "ok" if keyphrase_in_title else "warn"},
+            {"code": "keyphrase_in_intro", "status": "ok" if keyphrase_in_intro else "warn"},
+            {"code": "keyphrase_in_meta", "status": "ok" if keyphrase_in_meta else "warn"},
+            {"code": "keyphrase_in_headings", "status": "ok" if keyphrase_in_headings else "warn"},
+            {"code": "keyphrase_density", "status": "ok" if keyphrase_density_ok else "warn"},
+            {"code": "word_count", "status": "ok" if word_count >= 300 else "warn"},
+            {"code": "internal_links", "status": "ok" if internal_links >= 1 else "warn"},
+            {"code": "external_links", "status": "ok" if external_links >= 1 else "warn"},
+            {"code": "images_alt", "status": "ok" if images_with_alt >= 1 else "warn"},
+            {"code": "transition_words", "status": "ok" if has_transition else "warn"},
+            {"code": "sentence_length", "status": "ok" if long_sentence_count == 0 else "warn"},
+            {"code": "paragraph_length", "status": "ok" if long_paragraph_count == 0 else "warn"},
+            {"code": "passive_voice", "status": "ok" if passive_ratio <= 0.2 else "warn"},
+            {"code": "consecutive_starts", "status": "ok" if consecutive_starts == 0 else "warn"},
+            {"code": "competing_links", "status": "ok" if competing_links <= 1 else "warn"},
+            {"code": "previously_used_keyphrase", "status": "unknown"},
+        ]
+
         return {
             "seo_title": seo_title,
             "meta_description": meta,
@@ -550,30 +964,56 @@ Context:
                 "meta_ok": 140 <= len(meta) <= 155,
                 "title_length": len(seo_title),
                 "title_ok": 40 <= len(seo_title) <= 60,
+                "keyphrase_in_title": keyphrase_in_title,
+                "keyphrase_in_intro": keyphrase_in_intro,
+                "keyphrase_in_meta": keyphrase_in_meta,
+                "keyphrase_in_headings": keyphrase_in_headings,
+                "keyphrase_density": keyphrase_density,
+                "keyphrase_density_ok": keyphrase_density_ok,
+                "word_count": word_count,
+                "word_count_ok": word_count >= 300,
+                "internal_links": internal_links,
+                "external_links": external_links,
+                "images": image_count,
+                "images_with_alt": images_with_alt,
+                "transition_words_ok": has_transition,
+                "passive_voice_ratio": round(passive_ratio, 2),
+                "passive_voice_ok": passive_ratio <= 0.2,
+                "long_sentences": long_sentence_count,
+                "long_paragraphs": long_paragraph_count,
+                "consecutive_starts": consecutive_starts,
+                "competing_links": competing_links,
+                "checks": yoast_checks,
             },
         }
 
     async def social_variants(self, *, source_text: str, draft_title: str, draft_html: str) -> dict[str, str]:
         prompt = f"""
-أنت محرر منصات اجتماعية في غرفة أخبار.
-أعد JSON فقط بالمفاتيح:
-facebook, x, push, summary_120, breaking_alert
+        أنت محرر منصات اجتماعية لموقع إخباري.
+        أريد نسخًا جاهزة للنشر وفق القنوات التالية.
 
-الشروط:
-- عربية واضحة ومحترفة.
-- بدون تعليقات جانبية.
-- push بين 15 و18 كلمة.
-- summary_120 قرابة 120 كلمة.
+        أعد JSON فقط بالمفاتيح:
+        facebook, x, push, summary_120, breaking_alert
 
-العنوان:
-{draft_title}
+        قواعد مهمة:
+        - التزم فقط بالمعلومات الموجودة في النص.
+        - اجعل كل نسخة مناسبة لمنصتها.
+        - لا تستخدم clickbait مضلل.
+        - push بين 15 و18 كلمة.
+        - summary_120 بين 100 و130 حرفًا.
+        - breaking_alert استخدمه فقط إذا كان الخبر عاجلًا.
+        - أعد JSON فقط دون أي شرح.
 
-المتن:
-{draft_html[:9000]}
+        العنوان الحالي:
+        {draft_title}
 
-السياق:
-{source_text[:3000]}
-"""
+        النص:
+        {draft_html[:9000]}
+
+        المصدر:
+        {source_text[:3000]}
+        """
+
         ai = self._get_ai_service()
         data = await ai.generate_json(prompt) if ai else {}
         out: dict[str, str] = {}
@@ -608,25 +1048,120 @@ facebook, x, push, summary_120, breaking_alert
             if source_url:
                 confidence += 0.05
             confidence = min(confidence, 0.95)
+            risk_level = "low"
+            if claim_type in {"number", "date"} or confidence >= 0.85:
+                risk_level = "high"
+            elif confidence >= 0.70:
+                risk_level = "medium"
 
             claims.append(
                 {
                     "id": f"clm-{idx}",
                     "text": sentence,
                     "claim_type": claim_type,
+                    "risk_level": risk_level,
                     "confidence": round(confidence, 2),
+                    "sensitive": claim_type in {"number", "date"} or confidence >= 0.8,
                     "blocking": confidence < 0.70,
                     "verify_hint": "تحقق من المصدر الرسمي أو وكالة موثوقة",
                     "evidence_links": [source_url] if source_url else [],
+                    "unverifiable": False,
+                    "unverifiable_reason": "",
                 }
             )
         return claims
 
-    def fact_check_report(self, *, text: str, source_url: str | None = None, threshold: float = 0.70) -> dict[str, Any]:
+    async def fact_check_report(self, *, text: str, source_url: str | None = None, threshold: float = 0.70) -> dict[str, Any]:
         clean_text = self._strip_side_comments(text or "")
         template_noise = self._contains_template_noise(clean_text)
         claims = self.extract_claims(text=clean_text, source_url=source_url)
-        unresolved = [c for c in claims if c["confidence"] < threshold]
+        external_summary = {
+            "provider": "google_fact_check_tools",
+            "queries": 0,
+            "matches": 0,
+            "false_claims": 0,
+            "true_claims": 0,
+            "enabled": False,
+        }
+        for claim in claims:
+            has_support = bool(claim.get("evidence_links")) or (
+                bool(claim.get("unverifiable")) and bool(claim.get("unverifiable_reason"))
+            )
+            if has_support:
+                claim["blocking"] = False
+                claim["supported"] = True
+            claim["external_matches"] = []
+            claim["external_verdict"] = "unknown"
+            claim["external_match_count"] = 0
+
+        def _risk_rank(level: str) -> int:
+            return {"high": 0, "medium": 1, "low": 2}.get(level, 3)
+
+        api_enabled = bool(fact_check_tools_service) and await fact_check_tools_service.is_enabled()
+        external_summary["enabled"] = api_enabled
+
+        queries = sorted(
+            claims,
+            key=lambda c: (_risk_rank(str(c.get("risk_level"))), -float(c.get("confidence") or 0.0)),
+        )[:6]
+
+        if not fact_check_tools_service or not api_enabled:
+            unresolved = [c for c in claims if c.get("blocking")]
+            blocking_reasons: list[str] = []
+            actionable_fixes: list[str] = []
+            if template_noise:
+                blocking_reasons.append("النص يحتوي قوالب أو تعليقات جانبية وغير صالح للنشر")
+                actionable_fixes.append("استخدم زر تحسين الصياغة لإزالة القوالب والتعليقات")
+            if claims:
+                blocking_reasons.append("خدمة التحقق من الادعاءات غير مفعلة، لا يمكن اعتماد التقرير دونها.")
+                actionable_fixes.append("أضف مفتاح Google Fact Check من صفحة الإعدادات ثم أعد التحقق.")
+            if unresolved:
+                blocking_reasons.append("توجد ادعاءات غير مؤكدة تحت الحد المطلوب")
+                actionable_fixes.append("تحقق من الادعاءات منخفضة الثقة قبل طلب النشر")
+            passed = not blocking_reasons
+            score = max(0, 100 - len(unresolved) * 20 - (30 if template_noise else 0))
+            return {
+                "stage": "FACT_CHECK_PASSED" if passed else "FACT_CHECK_BLOCKED",
+                "passed": passed,
+                "score": score,
+                "claims": claims,
+                "external_fact_checks": external_summary,
+                "blocking_reasons": blocking_reasons,
+                "actionable_fixes": actionable_fixes,
+                "threshold": threshold,
+            }
+
+        for claim in queries:
+            query_text = str(claim.get("text") or "").strip()
+            if not query_text:
+                continue
+            matches, search_traces = await fact_check_tools_service.search_claims_with_fallbacks(
+                query_text,
+                language="ar",
+                page_size=4,
+            )
+            claim["external_search_queries"] = search_traces
+            external_summary["queries"] += len(search_traces)
+            if not matches:
+                continue
+            external_summary["matches"] += len(matches)
+            verdict = fact_check_tools_service.infer_verdict(matches)
+            claim["external_matches"] = matches
+            claim["external_match_count"] = len(matches)
+            claim["external_verdict"] = verdict
+            links = [m.get("url") for m in matches if m.get("url")]
+            if links:
+                claim["evidence_links"] = list(dict.fromkeys((claim.get("evidence_links") or []) + links))
+            if verdict == "false":
+                external_summary["false_claims"] += 1
+                claim["blocking"] = True
+                claim["risk_level"] = "high"
+            elif verdict == "true":
+                external_summary["true_claims"] += 1
+                claim["blocking"] = False
+                claim["supported"] = True
+
+        unresolved = [c for c in claims if c.get("blocking")]
 
         blocking_reasons: list[str] = []
         actionable_fixes: list[str] = []
@@ -644,6 +1179,7 @@ facebook, x, push, summary_120, breaking_alert
             "passed": passed,
             "score": score,
             "claims": claims,
+            "external_fact_checks": external_summary,
             "blocking_reasons": blocking_reasons,
             "actionable_fixes": actionable_fixes,
             "threshold": threshold,
@@ -775,29 +1311,34 @@ facebook, x, push, summary_120, breaking_alert
         baseline_confidence = 0.86 if baseline_decision == "approved" else 0.72
 
         prompt = f"""
-أنت وكيل السياسة التحريرية للشروق.
-أعد JSON فقط بالمفاتيح:
-decision, reasons, required_fixes, confidence
+        أنت مساعد تحريري لتقييم قرار الاعتماد النهائي.
+        أعد قرارًا مختصرًا مع الأسباب والإصلاحات المطلوبة.
 
-شروط القرار:
-- decision = approved أو reservations
-- إذا النص يحتوي ادعاءات غير محسومة أو صياغة غير مهنية: reservations
-- ممنوع أي شروحات خارج JSON
+        أعد JSON فقط بالمفاتيح:
+        decision, reasons, required_fixes, confidence
 
-العنوان:
-{title}
+        قواعد مهمة:
+        - decision يجب أن يكون approved أو reservations فقط.
+        - reservations تُستخدم عند وجود ملاحظات تحريرية أو فجوات تتطلب مراجعة.
+        - reasons قائمة مختصرة (حتى 4 عناصر).
+        - required_fixes قائمة مختصرة (حتى 4 عناصر).
+        - أعد JSON فقط دون أي شرح.
 
-المتن:
-{body_text[:8000]}
+        العنوان:
+        {title}
 
-السياق المصدر:
-{source_text[:2500]}
+        النص:
+        {body_text[:8000]}
 
-نتيجة أولية داخلية:
-decision={baseline_decision}
-reasons={reasons}
-required_fixes={required_fixes}
+        المصدر:
+        {source_text[:2500]}
+
+        القرار المبدئي الموصى به:
+        decision={baseline_decision}
+        reasons={reasons}
+        required_fixes={required_fixes}
 """
+
         ai = self._get_ai_service()
         data: dict[str, Any] = {}
         if ai:

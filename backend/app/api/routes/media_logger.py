@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -34,6 +35,7 @@ RUN_ALLOWED = {
     UserRole.print_editor,
 }
 VIEW_ALLOWED = RUN_ALLOWED
+ALLOWED_EXTENSIONS = {".mp3", ".wav", ".ogg", ".mp4", ".webm", ".m4a", ".flac"}
 
 
 def _require_run(user: User) -> None:
@@ -92,6 +94,12 @@ async def run_from_upload(
 ):
     _require_run(current_user)
     payload = await file.read()
+    ext = os.path.splitext(file.filename or "")[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '{ext}' not supported. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
     if not payload:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
     if len(payload) > 400 * 1024 * 1024:

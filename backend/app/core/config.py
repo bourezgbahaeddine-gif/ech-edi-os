@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_secret_key: str = Field(..., min_length=32)
     app_port: int = 8000
+    sql_echo: bool = False
+    auth_cookie_name: str = "echorouk_access_token"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    allow_director_self_management: bool = False
 
     @property
     def secret_key(self) -> str:
@@ -69,9 +74,38 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model_flash: str = "gemini-2.5-flash"
     gemini_model_pro: str = "gemini-2.5-pro"
-    groq_api_key: str = ""
+    embedding_provider: str = "hash"  # gemini|hash
+    embedding_model_gemini: str = "models/gemini-embedding-001"
+    embedding_vector_dim: int = 256
+    embedding_use_real_for_chunks: bool = False
+    echorouk_archive_enabled: bool = False
+    echorouk_archive_source_name: str = "Echorouk Online Archive"
+    echorouk_archive_base_url: str = "https://www.echoroukonline.com/"
+    echorouk_archive_sections: str = (
+        "https://www.echoroukonline.com/,"
+        "https://www.echoroukonline.com/algeria,"
+        "https://www.echoroukonline.com/economy,"
+        "https://www.echoroukonline.com/world,"
+        "https://www.echoroukonline.com/sport,"
+        "https://www.echoroukonline.com/opinion"
+    )
+    echorouk_archive_request_timeout_seconds: int = 20
+    echorouk_archive_delay_ms: int = 1200
+    echorouk_archive_stale_processing_minutes: int = 60
+    echorouk_archive_max_listing_pages_per_run: int = 3
+    echorouk_archive_max_articles_per_run: int = 12
+    echorouk_archive_max_listing_depth: int = 2500
+    echorouk_archive_backfill_interval_minutes: int = 10
+    echorouk_archive_refresh_interval_minutes: int = 1440
+    echorouk_archive_refresh_listing_pages: int = 2
+    echorouk_archive_refresh_article_pages: int = 10
+    echorouk_archive_rag_enabled: bool = False
+    echorouk_archive_rag_limit: int = 2
+    echorouk_archive_rag_min_score: float = 0.78
+    echorouk_archive_rag_prefer_category_match: bool = True
     youtube_data_api_key: str = ""
     youtube_trends_enabled: bool = False
+    google_fact_check_api_key: str = ""
 
     # Notifications
     telegram_bot_token: str = ""
@@ -81,8 +115,8 @@ class Settings(BaseSettings):
 
     # MinIO
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
     minio_bucket: str = "echorouk-media"
     minio_use_ssl: bool = False
 
@@ -123,6 +157,11 @@ class Settings(BaseSettings):
     msi_default_baseline_days: int = 90
     msi_default_report_limit: int = 30
 
+    ops_monitor_enabled: bool = True
+    ops_monitor_timezone: str = "Africa/Algiers"
+    ops_monitor_daily_hour: int = 7
+    ops_monitor_daily_minute: int = 15
+
     # Queue / Workers
     queue_enabled: bool = True
     queue_default_name: str = "ai_default"
@@ -136,6 +175,17 @@ class Settings(BaseSettings):
     queue_depth_limit_links: int = 120
     queue_depth_limit_trends: int = 120
     queue_depth_limit_scripts: int = 120
+    queue_backpressure_retry_after_seconds: int = 20
+    queue_sla_target_minutes_default: int = 20
+    queue_sla_target_minutes_router: int = 10
+    queue_sla_target_minutes_scribe: int = 20
+    queue_sla_target_minutes_quality: int = 20
+    queue_sla_target_minutes_simulator: int = 15
+    queue_sla_target_minutes_msi: int = 30
+    queue_sla_target_minutes_links: int = 15
+    queue_sla_target_minutes_trends: int = 20
+    queue_sla_target_minutes_scripts: int = 20
+    queue_sla_failure_rate_threshold_percent: float = 25.0
 
     # Router throughput tuning
     router_batch_limit: int = 120
@@ -154,9 +204,15 @@ class Settings(BaseSettings):
     provider_health_window_sec: int = 180
     provider_circuit_failures: int = 5
     provider_circuit_open_sec: int = 60
-    provider_weight_gemini: float = 0.7
-    provider_weight_groq: float = 0.3
+    provider_weight_gemini: float = 1.0
     provider_prefer_configured_only: bool = True
+    provider_daily_budget_usd: float = 12.0
+    provider_per_job_max_usd: float = 0.20
+    provider_cost_estimate_gemini_usd: float = 0.03
+    provider_queue_tier_scribe: str = "balanced"  # low|balanced|high
+    provider_queue_tier_quality: str = "high"
+    provider_queue_tier_simulator: str = "balanced"
+    provider_queue_tier_router: str = "low"
 
     # FreshRSS / RSS-Bridge
     scout_use_freshrss: bool = False
@@ -172,8 +228,17 @@ class Settings(BaseSettings):
     truth_score_verify_threshold: float = 0.8
     editorial_min_importance: int = 6
     editorial_require_local_signal: bool = True
+    editorial_desk_include_pre_candidate: bool = True
+    editorial_direct_publish_enabled: bool = True
+    editorial_sensitive_categories: str = "politics,international,health,society,environment"
+    editorial_sensitive_urgency_levels: str = "high,breaking"
+    editorial_sensitive_importance_threshold: int = 8
+    quality_claim_support_enforcement_enabled: bool = True
+    quality_claim_sensitive_threshold: float = 0.80
+    quality_claim_require_non_aggregator_support: bool = False
     max_rss_sources: int = 300
     rss_fetch_timeout: int = 30
+    link_check_timeout_seconds: int = 7
     scout_batch_size: int = 8
     scout_concurrency: int = 8
     scout_max_new_per_run: int = 250
@@ -228,6 +293,15 @@ class Settings(BaseSettings):
                 host = host[4:]
             domains.add(host)
         return domains
+
+    @property
+    def echorouk_archive_sections_list(self) -> list[str]:
+        values: list[str] = []
+        for raw in (self.echorouk_archive_sections or "").split(","):
+            value = raw.strip()
+            if value:
+                values.append(value)
+        return values
 
     class Config:
         env_file = ".env"

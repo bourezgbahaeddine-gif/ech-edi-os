@@ -8,9 +8,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.rbac import require_roles
 from app.api.routes.auth import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -22,14 +24,34 @@ from app.schemas import SourceCreate, SourceResponse, SourceUpdate
 from app.services.cache_service import cache_service
 from app.services.settings_service import settings_service
 
-router = APIRouter(prefix="/sources", tags=["Sources"])
+SOURCE_VIEW_ROLES = (
+    UserRole.director,
+    UserRole.editor_chief,
+    UserRole.journalist,
+    UserRole.social_media,
+    UserRole.print_editor,
+)
+SOURCE_MANAGE_ROLES = (UserRole.director, UserRole.editor_chief)
+
+router = APIRouter(
+    prefix="/sources",
+    tags=["Sources"],
+    dependencies=[Depends(require_roles(*SOURCE_VIEW_ROLES))],
+)
 settings = get_settings()
 POLICY_KEY_BLOCKED = "SCOUT_BLOCKED_DOMAINS"
 POLICY_KEY_FRESHRSS_CAP = "SCOUT_FRESHRSS_MAX_PER_SOURCE_PER_RUN"
 
 
-def _ensure_director(user: User) -> None:
-    if user.role != UserRole.director:
+class SourcePolicyUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked_domains: list[str] | None = Field(default=None)
+    freshrss_max_per_source_per_run: int | None = Field(default=None, ge=1, le=100)
+
+
+def _ensure_source_manager(user: User) -> None:
+    if user.role not in SOURCE_MANAGE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
 
 
@@ -351,8 +373,13 @@ async def list_sources(
 
 
 @router.post("/", response_model=SourceResponse, status_code=201)
-async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
+async def create_source(
+    data: SourceCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Register a new news source."""
+    _ensure_source_manager(current_user)
     # Check for duplicate URL
     existing = await db.execute(select(Source).where(Source.url == data.url))
     if existing.scalar_one_or_none():
@@ -366,8 +393,14 @@ async def create_source(data: SourceCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{source_id:int}", response_model=SourceResponse)
-async def update_source(source_id: int, data: SourceUpdate, db: AsyncSession = Depends(get_db)):
+async def update_source(
+    source_id: int,
+    data: SourceUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Update a news source."""
+    _ensure_source_manager(current_user)
     result = await db.execute(select(Source).where(Source.id == source_id))
     source = result.scalar_one_or_none()
     if not source:
@@ -383,8 +416,13 @@ async def update_source(source_id: int, data: SourceUpdate, db: AsyncSession = D
 
 
 @router.delete("/{source_id:int}")
-async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_source(
+    source_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Delete a news source."""
+    _ensure_source_manager(current_user)
     result = await db.execute(select(Source).where(Source.id == source_id))
     source = result.scalar_one_or_none()
     if not source:
@@ -425,30 +463,27 @@ async def get_sources_policy(
     current_user: User = Depends(get_current_user),
 ):
     """Get source ingestion policy values."""
-    _ensure_director(current_user)
+    _ensure_source_manager(current_user)
     policy = await _read_policy_values()
     return policy
 
 
 @router.put("/policy")
 async def update_sources_policy(
-    payload: dict,
+    payload: SourcePolicyUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update source ingestion policy (blocked domains and FreshRSS source cap)."""
-    _ensure_director(current_user)
+    """Update source ingestion policy. Input: blocked_domains array and optional FreshRSS cap."""
+    _ensure_source_manager(current_user)
 
-    blocked_domains = _normalize_domains_input(payload.get("blocked_domains"))
+    blocked_domains = _normalize_domains_input(payload.blocked_domains)
     if not blocked_domains:
         blocked_domains = _split_csv_domains(settings.scout_blocked_domains)
 
-    freshrss_cap = payload.get("freshrss_max_per_source_per_run", settings.scout_freshrss_max_per_source_per_run)
-    try:
-        freshrss_cap = int(freshrss_cap)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid freshrss_max_per_source_per_run")
-    freshrss_cap = max(1, min(freshrss_cap, 100))
+    freshrss_cap = payload.freshrss_max_per_source_per_run
+    if freshrss_cap is None:
+        freshrss_cap = settings.scout_freshrss_max_per_source_per_run
 
     await _upsert_setting(
         db,
@@ -499,7 +534,7 @@ async def apply_sources_health_actions(
     current_user: User = Depends(get_current_user),
 ):
     """Apply source tuning actions derived from health score."""
-    _ensure_director(current_user)
+    _ensure_source_manager(current_user)
     report = await _compute_sources_health(
         db,
         hours=hours,

@@ -1,8 +1,7 @@
 """
 Echorouk Editorial OS — AI Service
 ================================
-Unified interface for AI model calls (Gemini Flash/Pro, Groq).
-Tiered Processing: Python → Flash → Groq → Pro (cost optimization).
+Unified interface for Gemini model calls.
 """
 
 import json
@@ -23,11 +22,10 @@ settings = get_settings()
 
 
 class AIService:
-    """Unified AI service with tiered model selection."""
+    """Unified AI service with Gemini-based model selection."""
 
     def __init__(self):
         self._gemini_client = None
-        self._groq_client = None
 
     @staticmethod
     def _is_rate_limited_error(exc: Exception) -> bool:
@@ -57,13 +55,22 @@ class AIService:
             self._gemini_client = genai
         return self._gemini_client
 
-    async def _get_groq(self):
-        """Lazy-load Groq client."""
-        api_key = await settings_service.get_value("GROQ_API_KEY", settings.groq_api_key)
-        if self._groq_client is None and api_key:
-            from groq import Groq
-            self._groq_client = Groq(api_key=api_key)
-        return self._groq_client
+    @staticmethod
+    def _sanitize_error_for_logs(error: Exception) -> str:
+        """Sanitize error messages to prevent leaking secrets in logs."""
+        import re
+        message = str(error)
+        patterns = [
+            (r'(?i)(api[_-]?key|apikey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(secret[_-]?key|secretkey)\s*[=:]\s*["\']?([a-zA-Z0-9_\-]{16,})["\']?', r'\1=[REDACTED]'),
+            (r'(?i)(authorization)\s*[=:]\s*["\']?(bearer\s+[a-zA-Z0-9_\-\.]+)["\']?', r'\1=[REDACTED]'),
+            (r'(?i)bearer\s+([a-zA-Z0-9_\-\.]{20,})', 'bearer=[REDACTED]'),
+            (r'(?i)(password|passwd|pwd)\s*[=:]\s*["\']?([^"\'\s]{4,})["\']?', r'\1=[REDACTED]'),
+        ]
+        result = message
+        for pattern, replacement in patterns:
+            result = re.sub(pattern, replacement, result)
+        return result
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30))
     async def analyze_news(self, text: str, source: str = "") -> AIAnalysisResult:
@@ -121,64 +128,74 @@ Output Schema (JSON only, no markdown):
             return AIAnalysisResult(**data)
 
         except json.JSONDecodeError as e:
-            logger.error("ai_json_parse_error", error=str(e))
+            logger.error("ai_json_parse_error", error=self._sanitize_error_for_logs(e))
             return AIAnalysisResult()
         except Exception as e:
             if self._is_rate_limited_error(e):
                 # Fast-fail for quota saturation to avoid expensive retry storms.
-                logger.warning("ai_analysis_rate_limited", error=str(e))
+                logger.warning("ai_analysis_rate_limited", error=self._sanitize_error_for_logs(e))
                 return AIAnalysisResult()
-            logger.error("ai_analysis_error", error=str(e))
+            logger.error("ai_analysis_error", error=self._sanitize_error_for_logs(e))
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=30))
-    async def rewrite_article(self, content: str, category: str = "", style: str = "echorouk") -> dict:
+    async def rewrite_article(
+        self,
+        content: str,
+        category: str = "",
+        style: str = "echorouk",
+        route_context: dict | None = None,
+    ) -> dict:
         """
-        Rewrite an article in Echorouk style using Groq (fast) or Gemini Flash.
+        Rewrite an article in Echorouk style using Gemini Flash.
         """
-        prompt = f"""Role: You are a Senior Editor at Echorouk, Algeria's leading newspaper.
-Task: Rewrite this news content into a professional Arabic newsroom draft.
+        prompt = f"""أنت رئيس تحرير رقمي في جريدة الشروق.
+المطلوب: صياغة مسودة خبر عربية احترافية من النص التالي فقط، بدون اختراع أي معلومة.
 
-Guidelines:
-1. Use the Inverted Pyramid style (most important first).
-2. Tone: Professional, objective, suitable for digital news.
-3. No side comments, no explanation, no markdown, no code fences.
-4. Strictly avoid WordPress/Gutenberg artifacts like <!-- wp:... -->.
-5. body_html must be clean semantic HTML only.
-6. body_html must contain exactly one <h1> at the top, then multiple <p> and optional <h2>.
-7. Include at least one internal link to Echorouk (href starts with /news or /).
-8. Use at least two Arabic transition words between paragraphs (مثل: لذلك، بالمقابل، إضافة إلى ذلك).
-9. Keep body around 220-420 words.
-10. Include SEO-friendly title and meta description.
+قواعد صارمة:
+1) لا تضف حقائق غير موجودة في النص أو السياق الداعم.
+2) حافظ على الأسماء والأرقام والتواريخ كما وردت.
+3) إن لم تُذكر معلومة أساسية، لا تخمّنها ولا تلمّح إليها.
+4) ممنوع أي شرح خارج النص أو تعليقات جانبية أو Markdown أو كتل كود.
+5) تجنّب الصيغ المترهلة مثل "تم + مصدر" و"قام بـ" قدر الإمكان.
+6) النبرة خبرية محايدة، بلا مبالغة أو أحكام.
 
-Category: {category}
+بنية التحرير (الهرم المقلوب):
+- فقرة أولى قوية تلخّص أهم العناصر: ماذا/من/أين/متى/لماذا إن وُجدت.
+- تفاصيل إضافية مرتبة، ثم خلفية قصيرة إذا كانت موجودة في النص.
+- استخدم جُملاً قصيرة واضحة، وفقرات من 2-4 جمل.
+- أضف انتقالين عربيين على الأقل بين الفقرات (مثال: لذلك، بالمقابل، إضافة إلى ذلك، في المقابل).
 
-Output Format (JSON only):
+تنسيق HTML:
+- body_html يجب أن يكون HTML نظيفاً فقط.
+- يحتوي <h1> واحداً في البداية، ثم فقرات <p>، و<h2> اختياري عند الحاجة.
+- أضف رابطاً داخلياً واحداً على الأقل للشروق (href يبدأ بـ /news أو /).
+
+قيود الحجم:
+- بين 220 و420 كلمة تقريباً.
+
+SEO:
+- seo_title واضح ومباشر (30-65 حرفاً).
+- seo_description بين 80 و170 حرفاً وتلخّص الخبر دون مبالغة.
+- tags بين 3 و6 كلمات مفتاحية عربية واقعية من النص.
+
+التصنيف: {category}
+
+صيغة الإخراج (JSON فقط):
 {{
-  "headline": "String (Arabic, clear, max 15 words)",
-  "body_html": "String (Clean HTML only: one h1 + paragraphs + optional h2 + at least one internal link)",
-  "seo_title": "String (30-65 chars)",
-  "seo_description": "String (80-170 chars)",
-  "tags": ["tag1", "tag2"]
+  "headline": "عنوان عربي واضح (حد أقصى 15 كلمة)",
+  "body_html": "HTML نظيف: H1 واحد + فقرات + H2 اختياري + رابط داخلي واحد على الأقل",
+  "seo_title": "عنوان SEO (30-65 حرفاً)",
+  "seo_description": "وصف SEO (80-170 حرفاً)",
+  "tags": ["كلمة1", "كلمة2", "كلمة3"]
 }}
 
-Content to rewrite:
+النص لإعادة الصياغة:
 {content[:6000]}"""
 
         async def _run(provider_name: str) -> dict:
-            if provider_name == "groq":
-                groq = await self._get_groq()
-                if not groq:
-                    raise RuntimeError("groq_not_configured")
-                response = groq.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.35,
-                    max_tokens=4000,
-                )
-                result_text = response.choices[0].message.content.strip()
-                return self._parse_json_response(result_text)
-
+            if provider_name != "gemini":
+                raise RuntimeError(f"unsupported_provider:{provider_name}")
             gemini = await self._get_gemini()
             if not gemini:
                 raise RuntimeError("gemini_not_configured")
@@ -187,15 +204,13 @@ Content to rewrite:
             result_text = response.text.strip()
             return self._parse_json_response(result_text)
 
-        async def _fallback(provider_name: str, exc: Exception) -> dict:
-            logger.warning("provider_rewrite_failed", provider=provider_name, error=str(exc), msg="retry_with_fallback_provider")
-            alt = "gemini" if provider_name != "gemini" else "groq"
-            return await _run(alt)
-
         try:
-            return await provider_manager.call(run_fn=_run, fallback_fn=_fallback)
+            return await provider_manager.call(
+                run_fn=_run,
+                route_context=route_context or {"queue_name": "ai_quality", "urgency": "normal"},
+            )
         except Exception as e:  # noqa: BLE001
-            logger.error("rewrite_all_providers_failed", error=str(e))
+            logger.error("rewrite_all_providers_failed", error=self._sanitize_error_for_logs(e))
 
         return {"headline": "", "body_html": content, "seo_title": "", "seo_description": "", "tags": []}
 
@@ -225,8 +240,8 @@ Rules:
             )
             return response.text
         except Exception as e:
-            logger.error("deep_analysis_error", error=str(e))
-            return f"تعذر إجراء التحليل المعمّق: {str(e)}"
+            logger.error("deep_analysis_error", error=self._sanitize_error_for_logs(e))
+            return f"تعذر إجراء التحليل المعمّق: [error redacted]"
 
     async def generate_radio_script(self, articles: list[dict]) -> str:
         """Generate a radio news script from a list of articles."""
@@ -256,24 +271,14 @@ Articles:
             response = model.generate_content(prompt)
             return response.text
         except Exception as e:
-            logger.error("radio_script_error", error=str(e))
+            logger.error("radio_script_error", error=self._sanitize_error_for_logs(e))
             return ""
 
-    async def generate_text(self, prompt: str) -> str:
-        """Generate text using provider manager with fallback."""
+    async def generate_text(self, prompt: str, route_context: dict | None = None) -> str:
+        """Generate text using the active provider."""
         async def _run(provider_name: str) -> str:
-            if provider_name == "groq":
-                groq = await self._get_groq()
-                if not groq:
-                    raise RuntimeError("groq_not_configured")
-                response = groq.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                    max_tokens=2500,
-                )
-                return (response.choices[0].message.content or "").strip()
-
+            if provider_name != "gemini":
+                raise RuntimeError(f"unsupported_provider:{provider_name}")
             gemini = await self._get_gemini()
             if not gemini:
                 raise RuntimeError("gemini_not_configured")
@@ -281,26 +286,24 @@ Articles:
             response = model.generate_content(prompt)
             return response.text.strip()
 
-        async def _fallback(provider_name: str, exc: Exception) -> str:
-            logger.warning("provider_generate_text_failed", provider=provider_name, error=str(exc))
-            alt = "gemini" if provider_name != "gemini" else "groq"
-            return await _run(alt)
-
         try:
-            return await provider_manager.call(run_fn=_run, fallback_fn=_fallback)
+            return await provider_manager.call(
+                run_fn=_run,
+                route_context=route_context or {"queue_name": "ai_scribe", "urgency": "normal"},
+            )
         except Exception as e:
-            logger.error("generate_text_error", error=str(e))
+            logger.error("generate_text_error", error=self._sanitize_error_for_logs(e))
             return ""
 
-    async def generate_json(self, prompt: str) -> dict:
+    async def generate_json(self, prompt: str, route_context: dict | None = None) -> dict:
         """Generate structured JSON using Gemini and parse safely."""
         try:
-            text = await self.generate_text(prompt)
+            text = await self.generate_text(prompt, route_context=route_context)
             if not text:
                 return {}
             return self._parse_json_response(text)
         except Exception as e:
-            logger.error("generate_json_error", error=str(e))
+            logger.error("generate_json_error", error=self._sanitize_error_for_logs(e))
             return {}
 
     async def analyze_image_url(self, image_url: str, prompt: str) -> str:
@@ -320,7 +323,7 @@ Articles:
             response = model.generate_content([prompt, image_bytes])
             return response.text.strip()
         except Exception as e:
-            logger.error("vision_error", error=str(e))
+            logger.error("vision_error", error=self._sanitize_error_for_logs(e))
             return ""
 
 

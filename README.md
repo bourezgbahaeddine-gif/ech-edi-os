@@ -25,7 +25,7 @@
 
 | Principle | Implementation |
 |-----------|---------------|
-| **Cost-Efficiency** | Gemini Flash for bulk tasks, Groq for speed, Pro only when needed |
+| **Cost-Efficiency** | Gemini Flash for bulk tasks, Pro only when needed |
 | **Zero Trust** | All inputs sanitized, no hardcoded secrets, environment-based config |
 | **Idempotency** | Triple deduplication: SHA1 hash → Redis cache → Levenshtein fuzzy |
 | **Human-in-the-Loop** | Editorial review for every candidate before generation |
@@ -42,6 +42,8 @@
 
 Reference: `docs/BRAND_GUIDE.md`
 Reference: `NOTICE.md`
+
+Current codebase release: `v1.1 / 1.1.0` (`Async AI Isolation`)
 
 ### 👤 Attribution & Rights
 
@@ -74,7 +76,7 @@ RSS Sources (300+)
 |-------|------|----------|------|
 | 🔍 **Scout** (الكشّاف) | RSS ingestion, deduplication | None (pure Python) | $0 |
 | 🧭 **Router** (الموجّه) | Classification, urgency, routing | Gemini Flash (when needed) | ~$0.002/article |
-| ✍️ **Scribe** (الكاتب) | Article generation, SEO | Groq → Gemini Flash | ~$0.01/article |
+| ✍️ **Scribe** (الكاتب) | Article generation, SEO | Gemini Flash | ~$0.01/article |
 | 📡 **Trend Radar** (رادار التراند) | Cross-platform trend detection | Gemini Flash | ~$0.005/scan |
 | 🎙️ **Audio** (المذيع الآلي) | TTS audio news briefings | Edge-TTS (free) + Gemini | ~$0.001/briefing |
 
@@ -88,18 +90,18 @@ echorouk-swarm/
 │   ├── app/
 │   │   ├── core/          # Config, Database, Logging
 │   │   ├── models/        # SQLAlchemy ORM Models
-│   │   ├── schemas/       # Pydantic Request/Response
-│   │   ├── agents/        # AI Agent implementations (5 agents)
-│   │   ├── services/      # Shared services (AI, Cache, Notifications)
-│   │   ├── api/routes/    # FastAPI endpoints
+│   │   ├── schemas/       # Pydantic request/response models
+│   │   ├── agents/        # 6 agent modules (Scout, Router, Scribe, Trend Radar, Audio, Published Monitor)
+│   │   ├── services/      # Shared services and domain workflows
+│   │   ├── api/routes/    # 22 FastAPI route modules
 │   │   ├── utils/         # Hashing, Text processing
 │   │   └── main.py        # Application entry point
 │   ├── tests/             # Unit & integration tests
 │   ├── requirements.txt
 │   └── Dockerfile
-├── frontend/              # Next.js 16 Dashboard
+├── frontend/              # Next.js 16 newsroom application
 │   ├── src/
-│   │   ├── app/           # 6 pages (Dashboard, News, Editorial, Sources, Agents, Trends)
+│   │   ├── app/           # 36 route pages (32 static surfaces + 4 dynamic/detail routes)
 │   │   ├── components/    # Reusable UI components (Layout, Dashboard widgets)
 │   │   └── lib/           # API client, utilities, providers
 │   ├── Dockerfile
@@ -126,6 +128,7 @@ The following repository-level documents are the canonical onboarding/context pa
 - `TECHNICAL_CONTEXT_TYPES.md`
 - `TECHNICAL_CONTEXT_CONFIG.md`
 - `AGENT_ONBOARDING.md`
+- `docs/OPS_HANDOFF_2026-02-26.md` (latest operational handoff)
 
 Recommended read order:
 
@@ -146,7 +149,6 @@ Recommended read order:
 
 - Docker & Docker Compose
 - A **Gemini API Key** ([Get one free](https://makersuite.google.com/app/apikey))
-- (Optional) A **Groq API Key** ([Get one free](https://console.groq.com/keys))
 
 ### 1. Clone & Configure
 
@@ -191,7 +193,14 @@ SCOUT_USE_FRESHRSS=true
 FRESHRSS_FEED_URL=http://freshrss:80/p/i/?a=rss&state=all
 RSSBRIDGE_ENABLED=true
 RSSBRIDGE_BASE_URL=http://rssbridge:80
+AUTO_PIPELINE_ENABLED=true
+SCOUT_INTERVAL_MINUTES=5
+FRESHRSS_CRON_MIN=*/5
+SCOUT_MAX_ARTICLE_AGE_HOURS=24
+SCOUT_REQUIRE_TIMESTAMP_FOR_ALL_SOURCES=true
+SCOUT_ALLOW_URL_DATE_FALLBACK=false
 ```
+If `FRESHRSS_FEED_URL` contains `&`, keep the full value as a single line in `.env` (do not use unsafe `sed` replacement without escaping `&`).
 
 2. Start stack:
 ```bash
@@ -232,7 +241,7 @@ uvicorn app.main:app --reload --port 8000
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/health` | System health check |
+| `GET` | `/health` | Lightweight health check with live DB ping, Redis status, app version, and uptime |
 | `GET` | `/docs` | Interactive API documentation (Swagger) |
 | `GET` | `/redoc` | Alternative API documentation |
 
@@ -286,7 +295,7 @@ All configuration is done through environment variables. See [`.env.example`](.e
 
 | Group | Variables | Description |
 |-------|-----------|-------------|
-| **AI** | `GEMINI_API_KEY`, `GROQ_API_KEY` | AI service credentials |
+| **AI** | `GEMINI_API_KEY` | AI service credentials |
 | **Database** | `POSTGRES_*` | PostgreSQL connection |
 | **Cache** | `REDIS_*` | Redis connection |
 | **Notifications** | `TELEGRAM_BOT_TOKEN`, `SLACK_WEBHOOK_URL` | Alert channels |
@@ -317,7 +326,7 @@ pytest tests/test_utils.py -v
 | Operation | Model | Cost per Unit | Daily Estimate (500 articles) |
 |-----------|-------|---------------|-------------------------------|
 | Classification | Gemini Flash | ~$0.002 | ~$0.50 |
-| Article Writing | Groq (free tier) | $0.00 | $0.00 |
+| Article Writing | Gemini Flash | ~$0.01 | ~$0.01 |
 | Trend Analysis | Gemini Flash | ~$0.005 | ~$0.48 |
 | Audio Briefing | Edge-TTS | $0.00 | $0.00 |
 | **Total** | | | **~$1/day** |
@@ -331,7 +340,7 @@ pytest tests/test_utils.py -v
 - **Zero Trust**: All inputs sanitized (XSS, injection protection)
 - **No Hardcoded Secrets**: Everything via environment variables
 - **CORS**: Configurable allowed origins
-- **Input Validation**: Pydantic schemas on all endpoints
+- **Input Validation**: Pydantic models on JSON/body endpoints, plus FastAPI validation for query, form, file, and path inputs
 - **Error Isolation**: Global exception handler prevents info leaks
 
 ---
@@ -395,6 +404,9 @@ TOKEN=$(curl -sS -X POST http://127.0.0.1:8000/api/v1/auth/login \
 curl -sS "http://127.0.0.1:8000/api/v1/dashboard/stats" -H "Authorization: Bearer $TOKEN"
 curl -sS "http://127.0.0.1:8000/api/v1/jobs/queues/depth" -H "Authorization: Bearer $TOKEN"
 ```
+
+`/health` returns runtime status fields for `status`, `version`, `database`, `redis`, and `uptime_seconds`.
+The database field is produced from a live `SELECT 1` ping; if DB or Redis is unavailable, the endpoint stays HTTP 200 but returns `status="degraded"`.
 
 For queue debugging and operator playbook, see:
 

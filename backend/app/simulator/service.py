@@ -216,12 +216,15 @@ class AudienceSimulationService:
         article_id: int | None = None,
         draft_id: int | None = None,
         limit: int = 20,
+        owner_user_id: int | None = None,
     ) -> list[dict]:
         query = select(SimRun).order_by(SimRun.created_at.desc()).limit(limit)
         if article_id is not None:
             query = query.where(SimRun.article_id == article_id)
         if draft_id is not None:
             query = query.where(SimRun.draft_id == draft_id)
+        if owner_user_id is not None:
+            query = query.where(SimRun.created_by_user_id == owner_user_id)
         rows = await db.execute(query)
         runs = rows.scalars().all()
         out: list[dict] = []

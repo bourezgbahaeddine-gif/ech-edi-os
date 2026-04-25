@@ -7,13 +7,14 @@ from uuid import uuid4
 
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scribe import scribe_agent
 from app.api.deps.rbac import enforce_roles, require_roles
 from app.api.routes.auth import get_current_user
+from app.core.config import get_settings
 from app.core.correlation import get_correlation_id, get_request_id
 from app.core.database import get_db, async_session
 from app.core.logging import get_logger
@@ -37,7 +38,9 @@ from app.services.article_index_service import article_index_service
 from app.services.ai_service import ai_service
 from app.services.notification_service import notification_service
 from app.services.link_intelligence_service import link_intelligence_service
+from app.services.claim_support_service import claim_support_service
 from app.services.job_queue_service import job_queue_service
+from app.services.editorial_prompt_orchestrator_service import suggest_workspace_task
 from app.services.quality_gate_service import quality_gate_service
 from app.services.smart_editor_service import smart_editor_service
 from app.services.audit_service import audit_service
@@ -45,10 +48,15 @@ from app.services.state_transition_service import state_transition_service
 from app.services.trend_signal_service import bump_keyword_interactions, extract_keywords
 
 logger = get_logger("api.editorial")
+settings = get_settings()
 router = APIRouter(prefix="/editorial", tags=["Editorial"])
 
 
-class ArticleProcessRequest(BaseModel):
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ArticleProcessRequest(_StrictRequestModel):
     action: Literal[
         "summarize",
         "translate",
@@ -64,28 +72,28 @@ class ArticleProcessRequest(BaseModel):
     value: Optional[str] = Field(default=None, max_length=5000)
 
 
-class DraftUpsertRequest(BaseModel):
+class DraftUpsertRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=20000)
     note: Optional[str] = Field(default=None, max_length=1000)
     source_action: Optional[str] = Field(default=None, max_length=100)
 
 
-class DraftUpdateRequest(BaseModel):
+class DraftUpdateRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=20000)
     note: Optional[str] = Field(default=None, max_length=1000)
     version: int = Field(..., ge=1)
 
 
-class DraftAutosaveRequest(BaseModel):
+class DraftAutosaveRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=50000)
     note: Optional[str] = Field(default=None, max_length=1000)
     based_on_version: int = Field(..., ge=1)
 
 
-class DraftSuggestionApplyRequest(BaseModel):
+class DraftSuggestionApplyRequest(_StrictRequestModel):
     title: Optional[str] = Field(default=None, max_length=1024)
     body: str = Field(..., min_length=1, max_length=50000)
     note: Optional[str] = Field(default=None, max_length=1000)
@@ -93,46 +101,62 @@ class DraftSuggestionApplyRequest(BaseModel):
     suggestion_tool: Optional[str] = Field(default="rewrite", max_length=100)
 
 
-class RewriteSuggestionRequest(BaseModel):
+class RewriteSuggestionRequest(_StrictRequestModel):
     mode: Literal["formal", "breaking", "analysis", "simple"] = "formal"
     instruction: Optional[str] = Field(default=None, max_length=1000)
 
 
-class HeadlineSuggestionRequest(BaseModel):
+class InlineAiRequest(_StrictRequestModel):
+    action: Literal["rewrite", "shorten", "expand", "clarify"] = "rewrite"
+    text: str = Field(..., min_length=5, max_length=4000)
+    instruction: Optional[str] = Field(default=None, max_length=1000)
+
+
+class HeadlineSuggestionRequest(_StrictRequestModel):
     count: int = Field(default=5, ge=1, le=10)
 
 
-class ClaimVerifyRequest(BaseModel):
+class ClaimVerifyRequest(_StrictRequestModel):
     threshold: float = Field(default=0.70, ge=0.1, le=0.99)
+    claim_overrides: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
-class LinkSuggestRequest(BaseModel):
+class LinkSuggestRequest(_StrictRequestModel):
     mode: Literal["internal", "external", "mixed"] = "mixed"
     target_count: int = Field(default=6, ge=1, le=12)
 
 
-class LinkValidateRequest(BaseModel):
+class LinkValidateRequest(_StrictRequestModel):
     run_id: str = Field(..., min_length=8, max_length=64)
 
 
-class LinkApplyRequest(BaseModel):
+class LinkApplyRequest(_StrictRequestModel):
     run_id: str = Field(..., min_length=8, max_length=64)
     based_on_version: int = Field(..., ge=1)
     item_ids: Optional[list[int]] = Field(default=None, max_length=20)
 
 
-class ChiefFinalDecisionRequest(BaseModel):
+class ChiefFinalDecisionRequest(_StrictRequestModel):
     decision: Literal["approve", "approve_with_reservations", "send_back", "reject", "return_for_revision"]
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 
-class ManualWorkspaceDraftCreateRequest(BaseModel):
+class ReservationSubmitRequest(_StrictRequestModel):
+    notes: str = Field(..., min_length=5, max_length=1000)
+
+
+class ManualWorkspaceDraftCreateRequest(_StrictRequestModel):
     title: str = Field(..., min_length=5, max_length=1024)
     body: str = Field(..., min_length=30, max_length=50000)
     summary: Optional[str] = Field(default=None, max_length=3000)
     category: Optional[str] = Field(default="local_algeria", max_length=50)
     urgency: Optional[str] = Field(default="medium", max_length=20)
     source_action: Optional[str] = Field(default="manual_topic", max_length=100)
+
+
+class WorkspacePromptOrchestratorRunRequest(_StrictRequestModel):
+    task_key: Optional[Literal["first_draft", "verify_claims", "proofread", "quality_review", "headline_pack", "social_pack", "publish_gate"]] = None
+    auto_apply: Optional[bool] = None
 
 
 def _require_roles(user: User, allowed: set[UserRole]) -> None:
@@ -156,6 +180,69 @@ def _can_review_decision(user: User, decision: str) -> None:
         )
         return
     raise HTTPException(status_code=400, detail="قرار التحرير غير صالح")
+
+
+def _parse_csv(value: str | None) -> set[str]:
+    return {item.strip().lower() for item in (value or "").split(",") if item.strip()}
+
+
+def _category_label(category: NewsCategory | None) -> str:
+    if not category:
+        return ""
+    mapping = {
+        NewsCategory.POLITICS: "سياسة",
+        NewsCategory.INTERNATIONAL: "دولي",
+        NewsCategory.HEALTH: "صحة",
+        NewsCategory.SOCIETY: "مجتمع",
+        NewsCategory.ENVIRONMENT: "بيئة",
+        NewsCategory.ECONOMY: "اقتصاد",
+        NewsCategory.LOCAL_ALGERIA: "محلي الجزائر",
+        NewsCategory.TECHNOLOGY: "تكنولوجيا",
+        NewsCategory.SPORTS: "رياضة",
+        NewsCategory.CULTURE: "ثقافة",
+    }
+    return mapping.get(category, category.value)
+
+
+def _is_sensitive_article(
+    *,
+    article: Article,
+    policy_report: dict[str, Any] | None,
+    fact_report: ArticleQualityReport | None,
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    urgency_raw = str(article.urgency.value if isinstance(article.urgency, UrgencyLevel) else article.urgency or "").lower()
+    sensitive_urgency = _parse_csv(getattr(settings, "editorial_sensitive_urgency_levels", "high,breaking"))
+    sensitive_categories = _parse_csv(getattr(settings, "editorial_sensitive_categories", "politics,international,health,society,environment"))
+    importance_threshold = int(getattr(settings, "editorial_sensitive_importance_threshold", 8) or 8)
+
+    if article.is_breaking or urgency_raw in sensitive_urgency:
+        reasons.append("خبر عاجل أو أولوية عالية")
+
+    if article.category and article.category.value.lower() in sensitive_categories:
+        reasons.append(f"تصنيف حساس: {_category_label(article.category)}")
+
+    if int(article.importance_score or 0) >= importance_threshold:
+        reasons.append(f"أهمية تحريرية مرتفعة (>= {importance_threshold})")
+
+    fact_payload = (fact_report.report_json if fact_report else {}) or {}
+    claims = fact_payload.get("claims") if isinstance(fact_payload.get("claims"), list) else []
+    sensitive_claims = [
+        claim for claim in claims
+        if str(claim.get("risk_level") or "").lower() == "high" or bool(claim.get("sensitive"))
+    ]
+    if sensitive_claims:
+        reasons.append(f"ادعاءات حساسة تتطلب مراجعة ({len(sensitive_claims)})")
+
+    policy_reasons = policy_report.get("reasons") if isinstance(policy_report, dict) else []
+    if isinstance(policy_reasons, list):
+        for reason in policy_reasons:
+            reason_text = str(reason or "").lower()
+            if any(term in reason_text for term in ["قانون", "محكمة", "قضاء", "أمني", "اتهام", "تحقيق"]):
+                reasons.append("مؤشرات حساسة في السياسة التحريرية")
+                break
+
+    return (len(reasons) > 0), reasons
 
 
 def _clean_editorial_output(text: str) -> str:
@@ -400,9 +487,11 @@ async def _enqueue_editorial_ai_job(
 
     allowed, depth, limit_depth = await job_queue_service.check_backpressure(queue_name)
     if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Queue busy for {operation} ({depth}/{limit_depth}). Retry in a moment.",
+        raise job_queue_service.backpressure_exception(
+            queue_name=queue_name,
+            current_depth=depth,
+            depth_limit=limit_depth,
+            message=f"Queue busy for {operation}. Retry shortly.",
         )
     job_payload = {"operation": operation, "work_id": work_id, **(payload or {})}
     job = await job_queue_service.create_job(
@@ -575,11 +664,344 @@ async def _latest_stage_report(
     return row.scalar_one_or_none()
 
 
-async def _get_latest_draft_or_404(db: AsyncSession, work_id: str) -> EditorialDraft:
+async def _latest_stage_reports_for_articles(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+    stages: list[str],
+) -> dict[int, dict[str, ArticleQualityReport]]:
+    if not article_ids or not stages:
+        return {}
+    rows = await db.execute(
+        select(ArticleQualityReport)
+        .where(
+            ArticleQualityReport.article_id.in_(article_ids),
+            ArticleQualityReport.stage.in_(stages),
+        )
+        .order_by(
+            ArticleQualityReport.article_id.asc(),
+            ArticleQualityReport.stage.asc(),
+            ArticleQualityReport.created_at.desc(),
+            ArticleQualityReport.id.desc(),
+        )
+    )
+    mapped: dict[int, dict[str, ArticleQualityReport]] = {}
+    for report in rows.scalars().all():
+        stage_bucket = mapped.setdefault(report.article_id, {})
+        stage_bucket.setdefault(report.stage, report)
+    return mapped
+
+
+async def _latest_drafts_for_articles(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+) -> dict[int, EditorialDraft]:
+    if not article_ids:
+        return {}
+    rows = await db.execute(
+        select(EditorialDraft)
+        .where(EditorialDraft.article_id.in_(article_ids))
+        .order_by(
+            EditorialDraft.article_id.asc(),
+            EditorialDraft.version.desc(),
+            EditorialDraft.updated_at.desc(),
+            EditorialDraft.id.desc(),
+        )
+    )
+    mapped: dict[int, EditorialDraft] = {}
+    for draft in rows.scalars().all():
+        mapped.setdefault(draft.article_id, draft)
+    return mapped
+
+
+STAGE_LABELS_AR = {
+    "FACT_CHECK": "التحقق من الادعاءات",
+    "QUALITY_SCORE": "تقييم الجودة",
+    "READABILITY": "قابلية القراءة",
+    "SEO_TECH": "الفحص التقني للسيو",
+    "SEO_SUGGESTIONS": "اقتراحات السيو",
+    "SOCIAL_VARIANTS": "نسخ السوشيال",
+    "HEADLINE_PACK": "حزمة العناوين",
+    "EDITORIAL_POLICY": "السياسة التحريرية",
+}
+
+
+async def _build_workspace_publish_readiness(
+    db: AsyncSession,
+    *,
+    latest: EditorialDraft,
+) -> dict[str, Any]:
+    article_id = latest.article_id
+
+    stages = ["FACT_CHECK", "QUALITY_SCORE", "READABILITY", "SEO_TECH"]
+    stage_labels = STAGE_LABELS_AR
+    stage_reports: dict[str, Any] = {}
+    blockers: list[str] = []
+    mutated = False
+    article: Article | None = None
+    for stage in stages:
+        report = await _latest_stage_report(db, article_id=article_id, stage=stage)
+        if not report:
+            if article is None:
+                article_row = await db.execute(select(Article).where(Article.id == article_id))
+                article = article_row.scalar_one_or_none()
+            if article:
+                if stage == "READABILITY":
+                    text_value = latest.body or article.body_html or article.summary or article.original_content or article.original_title
+                    clean_text = smart_editor_service.html_to_text(text_value or "")
+                    payload = quality_gate_service.readability_report(clean_text or "")
+                    report = await quality_gate_service.save_report(
+                        db,
+                        article_id=article_id,
+                        stage="READABILITY",
+                        passed=bool(payload.get("passed")),
+                        score=payload.get("score"),
+                        blocking_reasons=payload.get("blocking_reasons", []),
+                        actionable_fixes=payload.get("actionable_fixes", []),
+                        report_json=payload,
+                        created_by="system",
+                        upsert_by_stage=True,
+                    )
+                    mutated = True
+                elif stage == "SEO_TECH":
+                    payload = await quality_gate_service.technical_audit(db, article)
+                    report = await quality_gate_service.save_report(
+                        db,
+                        article_id=article_id,
+                        stage="SEO_TECH",
+                        passed=bool(payload.get("passed")),
+                        score=payload.get("score"),
+                        blocking_reasons=payload.get("blocking_reasons", []),
+                        actionable_fixes=payload.get("actionable_fixes", []),
+                        report_json=payload,
+                        created_by="system",
+                        upsert_by_stage=True,
+                    )
+                    mutated = True
+                elif stage == "FACT_CHECK":
+                    text_value = latest.body or article.body_html or article.summary or article.original_content or article.original_title
+                    clean_text = smart_editor_service.html_to_text(text_value or "")
+                    payload = await smart_editor_service.fact_check_report(
+                        text=clean_text,
+                        source_url=article.original_url,
+                        threshold=0.70,
+                    )
+                    payload = claim_support_service.enrich_fact_check_report(payload)
+                    report = await quality_gate_service.save_report(
+                        db,
+                        article_id=article_id,
+                        stage="FACT_CHECK",
+                        passed=bool(payload.get("passed")),
+                        score=payload.get("score"),
+                        blocking_reasons=payload.get("blocking_reasons", []),
+                        actionable_fixes=payload.get("actionable_fixes", []),
+                        report_json=payload,
+                        created_by="system",
+                        upsert_by_stage=True,
+                    )
+                    await claim_support_service.persist_claim_report(
+                        db,
+                        article_id=article_id,
+                        quality_report_id=report.id if report else None,
+                        work_id=latest.work_id,
+                        report=payload,
+                        actor="system",
+                    )
+                    mutated = True
+                elif stage == "QUALITY_SCORE":
+                    source_text = "\n".join(
+                        [
+                            article.original_title or "",
+                            article.summary or "",
+                            article.original_content or "",
+                        ]
+                    ).strip()
+                    payload = smart_editor_service.quality_score(
+                        title=latest.title or article.title_ar or article.original_title or "",
+                        html=latest.body or article.body_html or "",
+                        source_text=source_text,
+                    )
+                    report = await quality_gate_service.save_report(
+                        db,
+                        article_id=article_id,
+                        stage="QUALITY_SCORE",
+                        passed=bool(payload.get("passed")),
+                        score=payload.get("score"),
+                        blocking_reasons=payload.get("blocking_reasons", []),
+                        actionable_fixes=payload.get("actionable_fixes", []),
+                        report_json=payload,
+                        created_by="system",
+                        upsert_by_stage=True,
+                    )
+                    mutated = True
+        if not report:
+            blockers.append(f"تقرير مفقود: {stage_labels.get(stage, stage)}")
+            continue
+        stage_reports[stage] = {
+            "passed": bool(report.passed),
+            "score": report.score,
+            "created_at": report.created_at,
+            "blocking_reasons": report.blocking_reasons or [],
+        }
+        if not report.passed:
+            blockers.extend(report.blocking_reasons or [f"فشل تقرير المرحلة: {stage_labels.get(stage, stage)}"])
+
+    if mutated:
+        await db.commit()
+
+    policy_report_row = await _latest_stage_report(db, article_id=article_id, stage="EDITORIAL_POLICY")
+    policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+    gate_result = await quality_gate_service.run_submission_quality_gates(
+        db,
+        article_id=article_id,
+        policy_report=policy_payload,
+    )
+    gate_summary = quality_gate_service.summarize_gate_result(gate_result)
+    gate_blockers = [item["message"] for item in gate_summary["items"] if item["severity"] == "blocker"]
+    blockers = list(dict.fromkeys(blockers + gate_blockers))
+
+    ready = len(blockers) == 0 and bool(gate_summary.get("passed", False))
+    return {
+        "work_id": latest.work_id,
+        "article_id": article_id,
+        "ready_for_publish": ready,
+        "blocking_reasons": blockers,
+        "reports": stage_reports,
+        "gates": gate_summary,
+    }
+
+
+async def _build_workspace_ready_package(
+    db: AsyncSession,
+    *,
+    latest: EditorialDraft,
+) -> dict[str, Any]:
+    article_row = await db.execute(select(Article).where(Article.id == latest.article_id))
+    article = article_row.scalar_one_or_none()
+    if not article:
+        raise HTTPException(404, "Article not found")
+
+    readiness = await _build_workspace_publish_readiness(db, latest=latest)
+    stage_keys = [
+        "FACT_CHECK",
+        "QUALITY_SCORE",
+        "READABILITY",
+        "SEO_TECH",
+        "SEO_SUGGESTIONS",
+        "SOCIAL_VARIANTS",
+        "HEADLINE_PACK",
+    ]
+    reports: dict[str, Any] = {}
+    for stage in stage_keys:
+        report = await _latest_stage_report(db, article_id=article.id, stage=stage)
+        if not report:
+            continue
+        reports[stage] = {
+            "stage": stage,
+            "label": STAGE_LABELS_AR.get(stage, stage),
+            "passed": bool(report.passed),
+            "score": report.score,
+            "created_at": report.created_at,
+            "blocking_reasons": report.blocking_reasons or [],
+            "actionable_fixes": report.actionable_fixes or [],
+            "report": report.report_json or {},
+            "created_by": report.created_by,
+        }
+
+    links_history = await link_intelligence_service.history(db, latest.work_id, limit=6)
+    journalist = latest.updated_by or latest.created_by
+
+    return {
+        "work_id": latest.work_id,
+        "article": {
+            "id": article.id,
+            "title": latest.title or article.title_ar or article.original_title,
+            "original_title": article.original_title,
+            "source_name": article.source_name,
+            "source_url": article.original_url,
+            "published_at": article.published_at,
+            "crawled_at": article.crawled_at,
+            "created_at": article.created_at,
+            "updated_at": article.updated_at,
+        },
+        "draft": {
+            "id": latest.id,
+            "version": latest.version,
+            "title": latest.title,
+            "body": latest.body,
+            "note": latest.note,
+            "status": latest.status,
+            "created_by": latest.created_by,
+            "updated_by": latest.updated_by,
+            "created_at": latest.created_at,
+            "updated_at": latest.updated_at,
+        },
+        "journalist": {
+            "name": journalist,
+            "created_by": latest.created_by,
+            "updated_by": latest.updated_by,
+        },
+        "readiness": readiness,
+        "reports": reports,
+        "links_history": links_history,
+    }
+
+
+def _draft_actor_matches(draft: EditorialDraft, current_user: User) -> bool:
+    identifiers = {
+        str(current_user.username or "").strip().lower(),
+        str(current_user.full_name_ar or "").strip().lower(),
+    }
+    for value in (draft.created_by, draft.updated_by, draft.applied_by):
+        candidate = str(value or "").strip().lower()
+        if candidate and candidate in identifiers:
+            return True
+    return False
+
+
+def assert_draft_access(
+    draft: EditorialDraft,
+    current_user: User,
+    *,
+    action: Literal["read", "write", "approve", "admin"] = "read",
+) -> None:
+    role = current_user.role
+    if role == UserRole.director:
+        return
+    if role == UserRole.editor_chief:
+        return
+
+    owns_draft = _draft_actor_matches(draft, current_user)
+    readable_shared_statuses = {"applied", "archived"}
+
+    if role == UserRole.journalist:
+        if owns_draft:
+            return
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    if role in {UserRole.social_media, UserRole.print_editor}:
+        if action == "read" and (owns_draft or draft.status in readable_shared_statuses):
+            return
+        if action in {"write", "approve", "admin"} and owns_draft:
+            return
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    raise HTTPException(status_code=403, detail="Not authorized for this draft")
+
+
+async def _get_latest_draft_or_404(
+    db: AsyncSession,
+    work_id: str,
+    *,
+    current_user: User,
+    action: Literal["read", "write", "approve", "admin"] = "read",
+) -> EditorialDraft:
     row = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
     draft = row.scalar_one_or_none()
     if not draft:
         raise HTTPException(404, "Draft not found")
+    assert_draft_access(draft, current_user, action=action)
     return draft
 
 
@@ -620,13 +1042,24 @@ async def _submit_draft_for_chief_approval(
     db: AsyncSession,
     draft: EditorialDraft,
     current_user: User,
+    force_direct_publish: bool = False,
 ) -> dict[str, Any]:
     article_result = await db.execute(select(Article).where(Article.id == draft.article_id))
     article = article_result.scalar_one_or_none()
     if not article:
         raise HTTPException(404, "Article not found")
 
-    await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
+    preflight_blockers: list[str] = []
+    if force_direct_publish:
+        try:
+            await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
+        except HTTPException as exc:
+            if exc.status_code == 412 and isinstance(exc.detail, dict):
+                preflight_blockers = list(exc.detail.get("blocking_reasons") or [])
+            else:
+                raise
+    else:
+        await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
 
     if draft.title:
         article.title_ar = draft.title
@@ -672,23 +1105,38 @@ async def _submit_draft_for_chief_approval(
         article_id=article.id,
         policy_report=policy_report,
     )
+    gate_summary = quality_gate_service.summarize_gate_result(gate_result)
 
     decision = policy_report.get("decision", "reservations")
-    if not gate_result.passed:
+    if not gate_result.passed and not force_direct_publish:
         decision = "reservations"
 
-    blockers = [issue.message for issue in gate_result.blockers]
+    blockers = list(dict.fromkeys(preflight_blockers + [issue.message for issue in gate_result.blockers]))
+    is_sensitive, sensitivity_reasons = _is_sensitive_article(
+        article=article,
+        policy_report=policy_report,
+        fact_report=fact_report,
+    )
     journalist_direct_path = current_user.role == UserRole.journalist
     submitted_for_chief_approval = False
     transition_action = "submit_for_chief_approval"
 
-    if decision == "approved" and journalist_direct_path:
+    if force_direct_publish:
+        if not journalist_direct_path:
+            raise HTTPException(status_code=403, detail="المسار المباشر متاح للصحفي فقط.")
+        target_status = NewsStatus.READY_FOR_MANUAL_PUBLISH
+        transition_action = "journalist_self_approval"
+        status_message = "تم الاعتماد الذاتي من الصحفي. ملاحظات الجودة تبقى استرشادية."
+    elif decision == "approved" and journalist_direct_path and settings.editorial_direct_publish_enabled and not is_sensitive:
         target_status = NewsStatus.READY_FOR_MANUAL_PUBLISH
         status_message = "تم اعتماد النسخة من الصحفي وأصبحت جاهزة للنشر اليدوي."
         transition_action = "journalist_direct_approval"
     elif decision == "approved":
         target_status = NewsStatus.READY_FOR_CHIEF_APPROVAL
         status_message = "جاهز لاعتماد رئيس التحرير"
+        if journalist_direct_path and is_sensitive:
+            status_message = "ملف حسّاس: تم تحويله إلى رئيس التحرير للاعتماد"
+            transition_action = "submit_for_chief_sensitive"
         submitted_for_chief_approval = True
     else:
         if journalist_direct_path:
@@ -712,6 +1160,9 @@ async def _submit_draft_for_chief_approval(
             "policy_score": policy_report.get("score"),
             "blocking_reasons": blockers,
             "journalist_direct_path": journalist_direct_path,
+            "forced_direct_publish": force_direct_publish,
+            "sensitive": is_sensitive,
+            "sensitivity_reasons": sensitivity_reasons,
         },
     )
 
@@ -764,8 +1215,136 @@ async def _submit_draft_for_chief_approval(
         "status_message": status_message,
         "submitted_for_chief_approval": submitted_for_chief_approval,
         "journalist_direct_path": journalist_direct_path,
+        "forced_direct_publish": force_direct_publish,
+        "sensitive": is_sensitive,
+        "sensitivity_reasons": sensitivity_reasons,
         "blocking_reasons": blockers or policy_report.get("blocking_reasons", []),
         "actionable_fixes": policy_report.get("actionable_fixes", []),
+        "gate_summary": gate_summary,
+    }
+
+
+async def _submit_draft_with_reservations(
+    *,
+    db: AsyncSession,
+    draft: EditorialDraft,
+    current_user: User,
+    notes: str,
+) -> dict[str, Any]:
+    article_result = await db.execute(select(Article).where(Article.id == draft.article_id))
+    article = article_result.scalar_one_or_none()
+    if not article:
+        raise HTTPException(404, "Article not found")
+
+    if draft.title:
+        article.title_ar = draft.title
+    if draft.body:
+        article.body_html = smart_editor_service.sanitize_html(draft.body)
+
+    source_text = "\n".join(
+        [
+            article.original_title or "",
+            article.summary or "",
+            article.original_content or "",
+        ]
+    ).strip()
+
+    readability_report = await _latest_stage_report(db, article_id=article.id, stage="READABILITY")
+    quality_report = await _latest_stage_report(db, article_id=article.id, stage="QUALITY_SCORE")
+    fact_report = await _latest_stage_report(db, article_id=article.id, stage="FACT_CHECK")
+
+    policy_report = await smart_editor_service.editorial_policy_review(
+        title=article.title_ar or article.original_title,
+        body_html=article.body_html or "",
+        source_text=source_text,
+        readability_report=(readability_report.report_json if readability_report else {}),
+        quality_report=(quality_report.report_json if quality_report else {}),
+        fact_report=(fact_report.report_json if fact_report else {}),
+    )
+
+    await quality_gate_service.save_report(
+        db,
+        article_id=article.id,
+        stage="EDITORIAL_POLICY",
+        passed=bool(policy_report["passed"]),
+        score=policy_report.get("score"),
+        blocking_reasons=policy_report.get("blocking_reasons", []),
+        actionable_fixes=policy_report.get("actionable_fixes", []),
+        report_json=policy_report,
+        created_by=current_user.full_name_ar,
+        upsert_by_stage=True,
+    )
+
+    blockers: list[str] = []
+    try:
+        await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
+    except HTTPException as exc:
+        if exc.status_code == 412 and isinstance(exc.detail, dict):
+            blockers = list(exc.detail.get("blocking_reasons") or [])
+        else:
+            raise
+
+    gate_result = await quality_gate_service.run_submission_quality_gates(
+        db,
+        article_id=article.id,
+        policy_report=policy_report,
+    )
+    gate_summary = quality_gate_service.summarize_gate_result(gate_result)
+
+    await _transition_article_status(
+        db=db,
+        article=article,
+        target_status=NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS,
+        actor=current_user,
+        action="submit_for_chief_with_reservations",
+        reason=notes,
+        details={
+            "work_id": draft.work_id,
+            "policy_score": policy_report.get("score"),
+            "blocking_reasons": blockers,
+            "reservation_note": notes,
+        },
+    )
+
+    draft.status = "applied"
+    draft.applied_by = current_user.full_name_ar
+    draft.applied_at = datetime.utcnow()
+    draft.updated_by = current_user.full_name_ar
+
+    await audit_service.log_action(
+        db,
+        action="draft_submit_with_reservations",
+        entity_type="editorial_draft",
+        entity_id=draft.id,
+        actor=current_user,
+        reason="reservation_request",
+        details={"work_id": draft.work_id, "version": draft.version},
+    )
+
+    db.add(
+        EditorDecision(
+            article_id=article.id,
+            editor_name=current_user.full_name_ar,
+            decision="process:submit_for_chief_with_reservations",
+            reason=notes,
+            edited_title=draft.title,
+            edited_body=draft.body,
+        )
+    )
+
+    await article_index_service.upsert_article(db, article)
+    await db.commit()
+
+    return {
+        "article_id": article.id,
+        "work_id": draft.work_id,
+        "policy_decision": "reservations",
+        "status": article.status.value,
+        "status_message": "تم إرسال طلب اعتماد مع تحفظات إلى رئيس التحرير.",
+        "submitted_for_chief_approval": True,
+        "blocking_reasons": blockers or policy_report.get("blocking_reasons", []),
+        "actionable_fixes": policy_report.get("actionable_fixes", []),
+        "gate_summary": gate_summary,
     }
 
 
@@ -804,6 +1383,17 @@ async def _assert_publish_gate_and_constitution(
             continue
         if not report.passed:
             blockers.extend(report.blocking_reasons or [f"فشل تقرير المرحلة: {stage}"])
+
+    policy_report_row = await _latest_stage_report(db, article_id=article_id, stage="EDITORIAL_POLICY")
+    policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+    gate_result = await quality_gate_service.run_submission_quality_gates(
+        db,
+        article_id=article_id,
+        policy_report=policy_payload,
+    )
+    blockers.extend(issue.message for issue in gate_result.blockers)
+
+    blockers = list(dict.fromkeys(blockers))
     if blockers:
         raise HTTPException(
             status_code=412,
@@ -870,6 +1460,21 @@ async def make_decision(
         raise HTTPException(status_code=422, detail="reason is required when decision=reject")
 
     if data.decision == "approve":
+        policy_report_row = await _latest_stage_report(db, article_id=article_id, stage="EDITORIAL_POLICY")
+        policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+        gate_result = await quality_gate_service.run_submission_quality_gates(
+            db,
+            article_id=article_id,
+            policy_report=policy_payload,
+        )
+        if not gate_result.passed:
+            raise HTTPException(
+                status_code=412,
+                detail={
+                    "message": "لا يمكن تحويل الخبر إلى مرحلة التسليم قبل تجاوز بوابة الجودة.",
+                    "blocking_reasons": [issue.message for issue in gate_result.blockers],
+                },
+            )
         await _transition_article_status(
             db=db,
             article=article,
@@ -1001,13 +1606,19 @@ async def process_article(
         raise HTTPException(404, "Article not found")
 
     text = article.original_content or article.summary or article.original_title
+    route_urgency = "high" if bool(getattr(article, "is_breaking", False)) else "normal"
 
     if payload.action in {"summarize", "translate", "proofread", "fact_check", "social_summary"}:
         _require_roles(current_user, NEWSROOM_ROLES)
 
         prompt = _editorial_prompt(payload.action, text, payload.value)
 
-        output = _clean_editorial_output(await ai_service.generate_text(prompt))
+        output = _clean_editorial_output(
+            await ai_service.generate_text(
+                prompt,
+                route_context={"queue_name": "ai_quality", "urgency": route_urgency},
+            )
+        )
         if not output or not output.strip():
             raise HTTPException(status_code=503, detail="AI service returned empty output")
 
@@ -1130,11 +1741,37 @@ async def process_article(
                         "actionable_fixes": audit.get("actionable_fixes", []),
                     },
                 )
-            article.status = NewsStatus.PUBLISHED
+            if article.status != NewsStatus.READY_FOR_MANUAL_PUBLISH:
+                await _transition_article_status(
+                    db=db,
+                    article=article,
+                    target_status=NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                    actor=current_user,
+                    action="process_publish_ready",
+                    reason=f"{current_user.role.value}_override",
+                    details={"article_id": article_id},
+                )
+            await _transition_article_status(
+                db=db,
+                article=article,
+                target_status=NewsStatus.PUBLISHED,
+                actor=current_user,
+                action="process_publish_now",
+                reason=f"{current_user.role.value}_override",
+                details={"article_id": article_id},
+            )
             article.published_at = datetime.utcnow()
             await bump_keyword_interactions(extract_keywords(article.title_ar or article.original_title), weight=3)
         else:
-            article.status = NewsStatus.APPROVED
+            await _transition_article_status(
+                db=db,
+                article=article,
+                target_status=NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                actor=current_user,
+                action="process_unpublish",
+                reason=f"{current_user.role.value}_override",
+                details={"article_id": article_id},
+            )
             article.published_at = None
             article.published_url = None
         db.add(
@@ -1307,9 +1944,15 @@ async def social_approved_feed(
         .limit(max(1, min(limit, 200)))
     )
     articles = rows.scalars().all()
+    article_ids = [article.id for article in articles]
+    reports_by_article = await _latest_stage_reports_for_articles(
+        db,
+        article_ids=article_ids,
+        stages=["SOCIAL_VARIANTS"],
+    )
     out: list[dict[str, Any]] = []
     for article in articles:
-        social_report = await _latest_stage_report(db, article_id=article.id, stage="SOCIAL_VARIANTS")
+        social_report = reports_by_article.get(article.id, {}).get("SOCIAL_VARIANTS")
         variants = ((social_report.report_json or {}).get("variants") if social_report else {}) or {}
         out.append(
             {
@@ -1520,10 +2163,7 @@ async def workspace_draft_by_work_id(
         },
     )
 
-    result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    draft = result.scalar_one_or_none()
-    if not draft:
-        raise HTTPException(404, "Draft not found")
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return _draft_to_dict(draft)
 
 
@@ -1534,7 +2174,7 @@ async def workspace_draft_context(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
 
     article_row = await db.execute(select(Article).where(Article.id == draft.article_id))
     article = article_row.scalar_one_or_none()
@@ -1566,16 +2206,20 @@ async def workspace_draft_context(
                 StoryClusterMember.cluster_id == member.cluster_id,
                 Article.id != article.id,
             )
-            .order_by(Article.crawled_at.desc(), Article.id.desc())
+            .order_by(func.coalesce(Article.published_at, Article.crawled_at).desc(), Article.id.desc())
             .limit(10)
         )
         related_cluster_articles = [
             {
                 "id": a.id,
                 "title": a.title_ar or a.original_title,
+                "summary": a.summary,
                 "url": a.original_url,
                 "source_name": a.source_name,
                 "created_at": a.created_at,
+                "published_at": a.published_at,
+                "category": a.category.value if a.category else None,
+                "status": a.status.value if a.status else None,
             }
             for a in cluster_articles_row.scalars().all()
         ]
@@ -1610,9 +2254,13 @@ async def workspace_draft_context(
             related_map[rel.id] = {
                 "id": rel.id,
                 "title": rel.title_ar or rel.original_title,
+                "summary": rel.summary,
                 "url": rel.original_url,
                 "source_name": rel.source_name,
                 "created_at": rel.created_at,
+                "published_at": rel.published_at,
+                "category": rel.category.value if rel.category else None,
+                "status": rel.status.value if rel.status else None,
             }
     relation_context = []
     for edge in relation_edges:
@@ -1657,7 +2305,7 @@ async def workspace_draft_versions(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     rows = await db.execute(
         select(EditorialDraft)
         .where(EditorialDraft.work_id == work_id)
@@ -1709,7 +2357,7 @@ async def workspace_draft_autosave(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if payload.based_on_version != latest.version:
         raise HTTPException(409, f"Draft version conflict. current={latest.version}")
 
@@ -1734,7 +2382,7 @@ async def workspace_draft_restore(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     target_row = await db.execute(
         select(EditorialDraft).where(
             EditorialDraft.work_id == work_id,
@@ -1769,7 +2417,7 @@ async def workspace_ai_rewrite(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1784,6 +2432,29 @@ async def workspace_ai_rewrite(
     )
 
 
+@router.post("/workspace/drafts/{work_id}/ai/inline")
+async def workspace_ai_inline(
+    work_id: str,
+    payload: InlineAiRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, NEWSROOM_ROLES)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
+    article_row = await db.execute(select(Article).where(Article.id == draft.article_id))
+    article = article_row.scalar_one_or_none()
+    source_text = ""
+    if article:
+        source_text = article.original_content or article.summary or article.original_title or ""
+    result = await smart_editor_service.inline_suggestion(
+        text=payload.text,
+        action=payload.action,
+        instruction=payload.instruction or "",
+        source_text=source_text,
+    )
+    return result
+
+
 @router.post("/workspace/drafts/{work_id}/ai/proofread")
 async def workspace_ai_proofread(
     work_id: str,
@@ -1794,7 +2465,7 @@ async def workspace_ai_proofread(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1817,7 +2488,7 @@ async def workspace_ai_headlines(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1838,7 +2509,7 @@ async def workspace_ai_seo(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1859,7 +2530,7 @@ async def workspace_ai_links_suggest(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1881,7 +2552,7 @@ async def workspace_ai_links_validate(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await link_intelligence_service.validate_run(db, payload.run_id)
 
 
@@ -1893,7 +2564,7 @@ async def workspace_ai_links_apply(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if payload.based_on_version != latest.version:
         raise HTTPException(409, f"Draft version conflict. current={latest.version}")
 
@@ -1932,7 +2603,7 @@ async def workspace_ai_links_history(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return {"work_id": work_id, "items": await link_intelligence_service.history(db, work_id, limit=max(1, min(limit, 30)))}
 
 
@@ -1944,7 +2615,7 @@ async def workspace_ai_social(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1965,7 +2636,7 @@ async def workspace_ai_apply(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -1996,7 +2667,7 @@ async def workspace_verify_claims(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2005,7 +2676,7 @@ async def workspace_verify_claims(
         job_type="editorial_claims",
         operation="claims",
         queue_name="ai_quality",
-        payload={"threshold": payload.threshold},
+        payload={"threshold": payload.threshold, "claim_overrides": payload.claim_overrides},
         wait_for_result_override=wait,
         wait_timeout_seconds_override=wait_timeout_seconds,
     )
@@ -2021,7 +2692,7 @@ async def workspace_quality_score(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2042,34 +2713,142 @@ async def workspace_publish_readiness(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
-    article_id = latest.article_id
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
+    return await _build_workspace_publish_readiness(db, latest=latest)
 
-    stages = ["FACT_CHECK", "SEO_TECH", "READABILITY", "QUALITY_SCORE"]
-    stage_reports: dict[str, Any] = {}
-    blockers: list[str] = []
-    for stage in stages:
-        report = await _latest_stage_report(db, article_id=article_id, stage=stage)
-        if not report:
-            blockers.append(f"تقرير مفقود: {stage}")
-            continue
-        stage_reports[stage] = {
-            "passed": bool(report.passed),
-            "score": report.score,
-            "created_at": report.created_at,
-            "blocking_reasons": report.blocking_reasons or [],
+
+@router.get("/workspace/drafts/{work_id}/ready-package")
+async def workspace_ready_package(
+    work_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, NEWSROOM_ROLES)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
+    return await _build_workspace_ready_package(db, latest=latest)
+
+
+@router.get("/workspace/drafts/{work_id}/ai/orchestrator")
+async def workspace_ai_orchestrator(
+    work_id: str,
+    task_key: Optional[Literal["first_draft", "verify_claims", "proofread", "quality_review", "headline_pack", "social_pack", "publish_gate"]] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, NEWSROOM_ROLES)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
+    article_row = await db.execute(select(Article).where(Article.id == latest.article_id))
+    article = article_row.scalar_one_or_none()
+    if not article:
+        raise HTTPException(404, "Article not found")
+    try:
+        return await suggest_workspace_task(db, latest=latest, article=article, forced_task_key=task_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/workspace/drafts/{work_id}/ai/orchestrator/run")
+async def workspace_ai_orchestrator_run(
+    work_id: str,
+    payload: WorkspacePromptOrchestratorRunRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, NEWSROOM_ROLES)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
+    article_row = await db.execute(select(Article).where(Article.id == latest.article_id))
+    article = article_row.scalar_one_or_none()
+    if not article:
+        raise HTTPException(404, "Article not found")
+
+    try:
+        suggestion = await suggest_workspace_task(
+            db,
+            latest=latest,
+            article=article,
+            forced_task_key=payload.task_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    task_key = suggestion["task_key"]
+    auto_apply = payload.auto_apply if payload.auto_apply is not None else bool(suggestion.get("auto_apply_default"))
+
+    if task_key == "publish_gate":
+        readiness = await _build_workspace_publish_readiness(db, latest=latest)
+        return {
+            "work_id": work_id,
+            "task": suggestion,
+            "status": "completed",
+            "result_type": "readiness",
+            "readiness": readiness,
+            "applied": False,
         }
-        if not report.passed:
-            blockers.extend(report.blocking_reasons or [f"فشل تقرير المرحلة: {stage}"])
 
-    ready = len(blockers) == 0
-    return {
-        "work_id": work_id,
-        "article_id": article_id,
-        "ready_for_publish": ready,
-        "blocking_reasons": blockers,
-        "reports": stage_reports,
+    operation = suggestion["operation"]
+    operation_payload = suggestion.get("operation_payload") or {}
+    job_type_map = {
+        "rewrite": "editorial_rewrite",
+        "claims": "editorial_claims",
+        "proofread": "editorial_proofread",
+        "quality": "editorial_quality",
+        "headlines": "editorial_headlines",
+        "social": "editorial_social",
     }
+    result = await _enqueue_editorial_ai_job(
+        db=db,
+        request=request,
+        current_user=current_user,
+        work_id=work_id,
+        job_type=job_type_map[operation],
+        operation=operation,
+        queue_name="ai_quality",
+        payload=operation_payload,
+        wait_for_result_override=True,
+        wait_timeout_seconds_override=90,
+    )
+
+    response: dict[str, Any] = {
+        "work_id": work_id,
+        "task": suggestion,
+        "status": result.get("status", "completed"),
+        "applied": False,
+    }
+
+    if operation in {"rewrite", "proofread"}:
+        response["result_type"] = "suggestion"
+        response["suggestion"] = result.get("suggestion")
+        if auto_apply and result.get("suggestion") and result.get("status") == "completed":
+            suggestion_payload = result["suggestion"]
+            applied_draft = await _create_draft_version(
+                db,
+                latest=latest,
+                title=suggestion_payload.get("title"),
+                body=str(suggestion_payload.get("body_html") or latest.body or ""),
+                note=f"orchestrator:{task_key}",
+                updated_by=current_user.full_name_ar,
+                change_origin="ai_suggestion",
+            )
+            await db.commit()
+            response["applied"] = True
+            response["draft"] = _draft_to_dict(applied_draft)
+    elif operation == "claims":
+        response["result_type"] = "claims"
+        response["report"] = result
+    elif operation == "quality":
+        response["result_type"] = "quality"
+        response["report"] = result
+    elif operation == "headlines":
+        response["result_type"] = "headlines"
+        response["headlines"] = result.get("headlines", [])
+    elif operation == "social":
+        response["result_type"] = "social"
+        response["variants"] = result.get("variants", {})
+
+    if result.get("error"):
+        response["error"] = result["error"]
+    return response
 
 
 @router.post("/workspace/drafts/{work_id}/apply")
@@ -2079,7 +2858,7 @@ async def apply_draft_by_work_id(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, AUTHOR_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_for_chief_approval(
@@ -2105,7 +2884,7 @@ async def submit_draft_for_chief_approval(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, AUTHOR_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_for_chief_approval(
@@ -2124,32 +2903,87 @@ async def submit_draft_for_chief_approval(
     }
 
 
+@router.post("/workspace/drafts/{work_id}/self-approve")
+async def self_approve_workspace_draft(
+    work_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, {UserRole.journalist})
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
+    if draft.status not in {"draft", "applied"}:
+        raise HTTPException(409, "Draft already archived")
+    submission = await _submit_draft_for_chief_approval(
+        db=db,
+        draft=draft,
+        current_user=current_user,
+        force_direct_publish=True,
+    )
+    return {
+        **submission,
+        "submitted_for_chief_approval": False,
+        "message": "تم الاعتماد المباشر من الصحفي. التقييمات المعروضة هي ملاحظات مساعدة فقط.",
+    }
+
+
+@router.post("/workspace/drafts/{work_id}/submit-with-reservations")
+async def submit_draft_with_reservations(
+    work_id: str,
+    payload: ReservationSubmitRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_roles(current_user, AUTHOR_ROLES)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
+    if draft.status not in {"draft", "applied"}:
+        raise HTTPException(409, "Draft already archived")
+    submission = await _submit_draft_with_reservations(
+        db=db,
+        draft=draft,
+        current_user=current_user,
+        notes=payload.notes,
+    )
+    return {
+        **submission,
+        "submitted_for_chief_approval": True,
+        "message": "تم إرسال طلب اعتماد مع تحفظات إلى رئيس التحرير.",
+    }
+
+
 @router.get("/chief/pending")
 async def chief_pending_queue(
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.director, UserRole.editor_chief)),
 ):
+    freshness_cutoff = datetime.utcnow() - timedelta(hours=settings.scout_max_article_age_hours)
     rows = await db.execute(
         select(Article)
-        .where(Article.status.in_(list(CHIEF_REVIEW_STATUSES)))
+        .where(
+            and_(
+                Article.status.in_(list(CHIEF_REVIEW_STATUSES)),
+                func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
+            )
+        )
         .order_by(Article.updated_at.desc(), Article.id.desc())
         .limit(max(1, min(limit, 500)))
     )
     articles = rows.scalars().all()
+    article_ids = [article.id for article in articles]
+    reports_by_article = await _latest_stage_reports_for_articles(
+        db,
+        article_ids=article_ids,
+        stages=["EDITORIAL_POLICY", "QUALITY_SCORE", "FACT_CHECK"],
+    )
+    drafts_by_article = await _latest_drafts_for_articles(db, article_ids=article_ids)
 
     out: list[dict[str, Any]] = []
     for article in articles:
-        policy_report = await _latest_stage_report(db, article_id=article.id, stage="EDITORIAL_POLICY")
-        quality_report = await _latest_stage_report(db, article_id=article.id, stage="QUALITY_SCORE")
-        fact_report = await _latest_stage_report(db, article_id=article.id, stage="FACT_CHECK")
-        latest_draft_row = await db.execute(
-            select(EditorialDraft)
-            .where(EditorialDraft.article_id == article.id)
-            .order_by(EditorialDraft.version.desc(), EditorialDraft.updated_at.desc(), EditorialDraft.id.desc())
-            .limit(1)
-        )
-        latest_draft = latest_draft_row.scalar_one_or_none()
+        article_reports = reports_by_article.get(article.id, {})
+        policy_report = article_reports.get("EDITORIAL_POLICY")
+        quality_report = article_reports.get("QUALITY_SCORE")
+        fact_report = article_reports.get("FACT_CHECK")
+        latest_draft = drafts_by_article.get(article.id)
         quality_score = int(quality_report.score) if quality_report and quality_report.score is not None else None
         claims_score = int(fact_report.score) if fact_report and fact_report.score is not None else None
         risk_level = "medium"
@@ -2218,6 +3052,7 @@ async def chief_final_decision(
     note = (payload.notes or "").strip()
     if decision in {"approve_with_reservations", "reject"} and not note:
         raise HTTPException(status_code=422, detail="reason is required for this decision")
+    overridden_blockers: list[str] = []
 
     if decision == "approve":
         await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
@@ -2232,6 +3067,14 @@ async def chief_final_decision(
         )
         message = "تم اعتماد النسخة النهائية وأصبحت جاهزة للنشر اليدوي."
     elif decision == "approve_with_reservations":
+        policy_report_row = await _latest_stage_report(db, article_id=article.id, stage="EDITORIAL_POLICY")
+        policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+        gate_result = await quality_gate_service.run_submission_quality_gates(
+            db,
+            article_id=article.id,
+            policy_report=policy_payload,
+        )
+        overridden_blockers = list(dict.fromkeys(issue.message for issue in gate_result.blockers))
         await _transition_article_status(
             db=db,
             article=article,
@@ -2239,7 +3082,10 @@ async def chief_final_decision(
             actor=current_user,
             action="chief_approve_with_reservations",
             reason=note,
-            details={"article_id": article.id},
+            details={
+                "article_id": article.id,
+                "overridden_blockers": overridden_blockers,
+            },
         )
         message = "تم تسجيل اعتماد بتحفظات وإبقاء الخبر ضمن مراجعة السياسة."
     elif decision == "send_back":
@@ -2287,6 +3133,7 @@ async def chief_final_decision(
         "status": article.status.value if article.status else None,
         "decision": decision,
         "message": message,
+        "overridden_blockers": overridden_blockers,
     }
 
 
@@ -2307,10 +3154,7 @@ async def archive_draft_by_work_id(
         },
     )
 
-    draft_result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    draft = draft_result.scalar_one_or_none()
-    if not draft:
-        raise HTTPException(404, "Draft not found")
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="admin")
     if draft.status == "archived":
         return {"work_id": work_id, "archived": True, "draft": _draft_to_dict(draft)}
 
@@ -2345,10 +3189,7 @@ async def regenerate_draft_by_work_id(
         },
     )
 
-    draft_result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    latest = draft_result.scalar_one_or_none()
-    if not latest:
-        raise HTTPException(404, "Draft not found")
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
 
     article_result = await db.execute(select(Article).where(Article.id == latest.article_id))
     article = article_result.scalar_one_or_none()

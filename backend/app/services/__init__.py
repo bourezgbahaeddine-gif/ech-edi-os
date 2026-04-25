@@ -2,11 +2,14 @@
 
 __all__ = [
     "ai_service",
+    "embedding_service",
     "cache_service",
     "notification_service",
     "article_index_service",
+    "echorouk_archive_service",
     "news_knowledge_service",
     "quality_gate_service",
+    "claim_support_service",
     "smart_editor_service",
     "project_memory_service",
 ]
@@ -17,6 +20,10 @@ def __getattr__(name: str):
         from app.services.ai_service import ai_service
 
         return ai_service
+    if name == "embedding_service":
+        from app.services.embedding_service import embedding_service
+
+        return embedding_service
     if name == "cache_service":
         from app.services.cache_service import cache_service
 
@@ -29,6 +36,10 @@ def __getattr__(name: str):
         from app.services.article_index_service import article_index_service
 
         return article_index_service
+    if name == "echorouk_archive_service":
+        from app.services.echorouk_archive_service import echorouk_archive_service
+
+        return echorouk_archive_service
     if name == "news_knowledge_service":
         from app.services.news_knowledge_service import news_knowledge_service
 
@@ -37,6 +48,10 @@ def __getattr__(name: str):
         from app.services.quality_gate_service import quality_gate_service
 
         return quality_gate_service
+    if name == "claim_support_service":
+        from app.services.claim_support_service import claim_support_service
+
+        return claim_support_service
     if name == "smart_editor_service":
         from app.services.smart_editor_service import smart_editor_service
 

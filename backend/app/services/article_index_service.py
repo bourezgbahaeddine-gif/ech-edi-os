@@ -9,15 +9,16 @@ Article indexing service:
 from __future__ import annotations
 
 import hashlib
-import math
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models import (
     Article,
@@ -27,8 +28,10 @@ from app.models import (
     ArticleTopic,
     ArticleVector,
 )
+from app.services.embedding_service import embedding_service
 
 logger = get_logger("article_index_service")
+settings = get_settings()
 
 
 ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
@@ -133,21 +136,6 @@ def _extract_entities(normalized: NormalizedArticle) -> list[tuple[str, str, flo
     return out[:30]
 
 
-def _hash_embedding(text: str, dim: int = 256) -> list[float]:
-    # Deterministic lightweight embedding (fallback, no external API).
-    base = hashlib.sha256((text or "").encode("utf-8")).digest()
-    values = []
-    seed = base
-    while len(values) < dim:
-        seed = hashlib.sha256(seed).digest()
-        for b in seed:
-            values.append((b / 255.0) * 2.0 - 1.0)
-            if len(values) >= dim:
-                break
-    norm = math.sqrt(sum(v * v for v in values)) or 1.0
-    return [v / norm for v in values]
-
-
 def _checksum(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
@@ -173,7 +161,13 @@ def _archive_code(article_id: int) -> str:
 
 
 class ArticleIndexService:
-    async def upsert_article(self, db: AsyncSession, article: Article) -> None:
+    async def upsert_article(
+        self,
+        db: AsyncSession,
+        article: Article,
+        *,
+        profile_metadata: dict[str, Any] | None = None,
+    ) -> None:
         normalized = _normalize_article(article)
 
         existing_profile = await db.execute(
@@ -196,12 +190,16 @@ class ArticleIndexService:
         profile.category = article.category.value if article.category else None
         profile.editorial_status = article.status.value if article.status else None
         profile.search_text = normalized.search_text
-        profile.metadata_json = {
+        metadata_json = dict(profile.metadata_json or {})
+        metadata_json.update({
             "importance_score": article.importance_score,
             "urgency": article.urgency.value if article.urgency else None,
             "is_breaking": article.is_breaking,
             "published_at": article.published_at.isoformat() if article.published_at else None,
-        }
+        })
+        if profile_metadata:
+            metadata_json.update(profile_metadata)
+        profile.metadata_json = metadata_json
         profile.updated_at = datetime.utcnow()
 
         await db.flush()
@@ -228,15 +226,18 @@ class ArticleIndexService:
 
         # Title + summary vectors
         title_hash = _checksum(normalized.title)
-        summary_hash = _checksum(normalized.summary or normalized.content[:500])
+        summary_text = normalized.summary or normalized.content[:500]
+        summary_hash = _checksum(summary_text)
+        title_embedding, title_model = await embedding_service.embed_document(normalized.title)
+        summary_embedding, summary_model = await embedding_service.embed_document(summary_text)
         db.add(
             ArticleVector(
                 article_id=article.id,
                 chunk_id=None,
                 vector_type="title",
-                model="hash-v1",
-                dim=256,
-                embedding=_hash_embedding(normalized.title),
+                model=title_model,
+                dim=len(title_embedding),
+                embedding=title_embedding,
                 content_hash=title_hash,
             )
         )
@@ -245,9 +246,9 @@ class ArticleIndexService:
                 article_id=article.id,
                 chunk_id=None,
                 vector_type="summary",
-                model="hash-v1",
-                dim=256,
-                embedding=_hash_embedding(normalized.summary or normalized.content[:500]),
+                model=summary_model,
+                dim=len(summary_embedding),
+                embedding=summary_embedding,
                 content_hash=summary_hash,
             )
         )
@@ -263,14 +264,19 @@ class ArticleIndexService:
             )
             db.add(chunk)
             await db.flush()
+            if settings.embedding_use_real_for_chunks:
+                chunk_embedding, chunk_model = await embedding_service.embed_document(chunk_text)
+            else:
+                chunk_embedding = embedding_service.hash_embedding(chunk_text)
+                chunk_model = "hash-v1"
             db.add(
                 ArticleVector(
                     article_id=article.id,
                     chunk_id=chunk.id,
                     vector_type="chunk",
-                    model="hash-v1",
-                    dim=256,
-                    embedding=_hash_embedding(chunk_text),
+                    model=chunk_model,
+                    dim=len(chunk_embedding),
+                    embedding=chunk_embedding,
                     content_hash=_checksum(chunk_text),
                 )
             )

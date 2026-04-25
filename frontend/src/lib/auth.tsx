@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import {
     createContext,
@@ -23,7 +23,7 @@ interface AuthContextType {
     user: AuthUser | null;
     token: string | null;
     isLoading: boolean;
-    login: (token: string, user: AuthUser) => void;
+    login: (user: AuthUser, token?: string | null) => void;
     logout: () => void;
 }
 
@@ -34,8 +34,8 @@ type AuthState = {
 };
 
 type AuthAction =
-    | { type: 'hydrate'; payload: { token: string | null; user: AuthUser | null } }
-    | { type: 'login'; payload: { token: string; user: AuthUser } }
+    | { type: 'hydrate'; payload: { user: AuthUser | null; token: string | null } }
+    | { type: 'login'; payload: { user: AuthUser; token: string | null } }
     | { type: 'logout' };
 
 const AuthContext = createContext<AuthContextType>({
@@ -50,31 +50,9 @@ const PUBLIC_PATHS = ['/login'];
 
 function getHomePathByRole(role: string): string {
     const normalized = (role || '').toLowerCase();
-    if (normalized === 'director' || normalized === 'editor_chief') return '/';
-    return '/news';
-}
-
-function readStoredAuth(): { token: string | null; user: AuthUser | null } {
-    if (typeof window === 'undefined') {
-        return { token: null, user: null };
-    }
-
-    const savedToken = window.localStorage.getItem('echorouk_token');
-    const savedUser = window.localStorage.getItem('echorouk_user');
-
-    if (!savedToken || !savedUser) {
-        return { token: null, user: null };
-    }
-
-    try {
-        const parsedUser = JSON.parse(savedUser) as AuthUser;
-        api.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
-        return { token: savedToken, user: parsedUser };
-    } catch {
-        window.localStorage.removeItem('echorouk_token');
-        window.localStorage.removeItem('echorouk_user');
-        return { token: null, user: null };
-    }
+    if (normalized === 'director') return '/';
+    if (normalized === 'editor_chief') return '/today';
+    return '/today';
 }
 
 export const useAuth = () => useContext(AuthContext);
@@ -104,6 +82,14 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
     }
 }
 
+function applyAuthToken(token: string | null) {
+    if (token) {
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    } else {
+        delete api.defaults.headers.common.Authorization;
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
@@ -116,8 +102,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { user, token, isLoading } = authState;
 
     useEffect(() => {
-        const initial = readStoredAuth();
-        dispatch({ type: 'hydrate', payload: initial });
+        let cancelled = false;
+
+        const hydrate = async () => {
+            try {
+                const response = await api.get<AuthUser>('/auth/me');
+                if (cancelled) return;
+                dispatch({ type: 'hydrate', payload: { user: response.data, token: null } });
+            } catch {
+                if (cancelled) return;
+                applyAuthToken(null);
+                dispatch({ type: 'hydrate', payload: { user: null, token: null } });
+            }
+        };
+
+        void hydrate();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     useEffect(() => {
@@ -126,11 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!user) router.push('/login');
     }, [isLoading, pathname, router, user]);
 
-    const login = (newToken: string, newUser: AuthUser) => {
-        window.localStorage.setItem('echorouk_token', newToken);
-        window.localStorage.setItem('echorouk_user', JSON.stringify(newUser));
-        api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
-        dispatch({ type: 'login', payload: { token: newToken, user: newUser } });
+    const login = (newUser: AuthUser) => {
+        applyAuthToken(null);
+        dispatch({ type: 'login', payload: { user: newUser, token: null } });
         router.push(getHomePathByRole(newUser.role));
     };
 
@@ -141,9 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // ignore network/logout errors
         }
 
-        window.localStorage.removeItem('echorouk_token');
-        window.localStorage.removeItem('echorouk_user');
-        delete api.defaults.headers.common.Authorization;
+        applyAuthToken(null);
         dispatch({ type: 'logout' });
         router.push('/login');
     };

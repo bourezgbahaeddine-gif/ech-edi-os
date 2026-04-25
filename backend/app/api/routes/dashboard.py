@@ -3,18 +3,33 @@ Echorouk Editorial OS - Dashboard & Agent Control API.
 """
 
 import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, func, and_, update, desc, case
+from sqlalchemy import select, func, and_, update, desc, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.rbac import require_roles
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.correlation import get_correlation_id, get_request_id
 from app.core.logging import get_logger
-from app.models import Article, Source, PipelineRun, FailedJob, NewsStatus, UrgencyLevel, JobRun
+from app.models import (
+    Article,
+    ArticleVector,
+    Source,
+    PipelineRun,
+    FailedJob,
+    NewsStatus,
+    UrgencyLevel,
+    JobRun,
+    SocialTask,
+    SocialPost,
+    ScriptProject,
+    DocumentIntelDocument,
+)
 from app.models.user import User, UserRole
 from app.api.routes.auth import get_current_user
 from app.schemas import DashboardStats, PipelineRunResponse
@@ -24,9 +39,22 @@ from app.services.event_reminder_service import event_reminder_service
 from app.services.digital_team_service import ChannelScope, digital_team_service
 from app.services.job_queue_service import job_queue_service
 from app.services.time_integrity_service import time_integrity_service
+from app.services.ops_monitor_service import ops_monitor_service
 
 logger = get_logger("api.dashboard")
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+DASHBOARD_NEWSROOM_ROLES = (
+    UserRole.director,
+    UserRole.editor_chief,
+    UserRole.journalist,
+    UserRole.social_media,
+    UserRole.print_editor,
+)
+
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["Dashboard"],
+    dependencies=[Depends(require_roles(*DASHBOARD_NEWSROOM_ROLES))],
+)
 settings = get_settings()
 
 
@@ -61,8 +89,12 @@ async def _expire_stale_breaking_flags(db: AsyncSession) -> None:
 
 
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get real-time dashboard statistics."""
+    _assert_internal_dashboard_view_permission(current_user)
     await _expire_stale_breaking_flags(db)
     cached = await cache_service.get_json("dashboard:stats")
     if cached:
@@ -128,8 +160,10 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 async def get_pipeline_runs(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get recent pipeline execution logs."""
+    _assert_internal_dashboard_view_permission(current_user)
     result = await db.execute(
         select(PipelineRun)
         .order_by(PipelineRun.started_at.desc())
@@ -250,6 +284,31 @@ async def get_operational_overview(
     }
 
 
+@router.get("/system/monitor")
+async def get_system_monitor(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """System monitoring snapshot for databases, vectors, and key app sections."""
+    _assert_agent_control_permission(current_user)
+    return await ops_monitor_service.collect_snapshot(db)
+
+
+@router.get("/system/monitor/daily")
+async def get_daily_system_monitor(current_user: User = Depends(get_current_user)):
+    """Retrieve last daily monitor snapshot."""
+    _assert_agent_control_permission(current_user)
+    cached = await cache_service.get_json("ops:daily_monitor:last")
+    return cached or {"generated_at": None, "message": "no_daily_snapshot"}
+
+
+@router.post("/system/monitor/run")
+async def run_daily_system_monitor(current_user: User = Depends(get_current_user)):
+    """Run daily monitor now (manual trigger)."""
+    _assert_agent_control_permission(current_user)
+    return await ops_monitor_service.run_daily_monitor()
+
+
 @router.get("/time-integrity")
 async def get_time_integrity_overview(
     max_age_hours: int | None = Query(default=None, ge=1, le=744),
@@ -286,13 +345,82 @@ async def run_time_integrity_cleanup(
     }
 
 
+@router.post("/time-integrity/cleanup/restore")
+async def restore_time_integrity_cleanup(
+    dry_run: bool = Query(default=True),
+    lookback_hours: int = Query(default=24, ge=1, le=168),
+    max_rows: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Restore recently auto-archived stale items (director only)."""
+    _assert_director_permission(current_user)
+    result = await time_integrity_service.restore_recent_auto_archived(
+        db,
+        lookback_hours=lookback_hours,
+        max_rows=max_rows,
+        dry_run=dry_run,
+        actor=current_user,
+    )
+    return {
+        "message": "Time integrity restore completed." if not dry_run else "Time integrity restore dry-run completed.",
+        **result,
+    }
+
+
+@router.get("/time-integrity/watchlist")
+async def get_time_integrity_watchlist(
+    top_sources_limit: int = Query(default=20, ge=5, le=100),
+    min_events: int = Query(default=10, ge=1, le=1000),
+    include_disabled: bool = Query(default=True),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return source watchlist derived from time-integrity counters."""
+    _assert_agent_control_permission(current_user)
+    return await time_integrity_service.build_source_watchlist(
+        db,
+        top_sources_limit=top_sources_limit,
+        min_events=min_events,
+        include_disabled=include_disabled,
+    )
+
+
+@router.post("/time-integrity/watchlist/apply")
+async def apply_time_integrity_watchlist_actions(
+    dry_run: bool = Query(default=True),
+    top_sources_limit: int = Query(default=30, ge=5, le=100),
+    min_events: int = Query(default=10, ge=1, le=1000),
+    max_changes: int = Query(default=100, ge=1, le=500),
+    include_disabled: bool = Query(default=True),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply watchlist actions (priority/enable tuning) to weak sources."""
+    _assert_director_permission(current_user)
+    result = await time_integrity_service.apply_source_watchlist_actions(
+        db,
+        dry_run=dry_run,
+        top_sources_limit=top_sources_limit,
+        min_events=min_events,
+        max_changes=max_changes,
+        include_disabled=include_disabled,
+    )
+    return {
+        "message": "Time integrity watchlist apply completed." if not dry_run else "Time integrity watchlist dry-run completed.",
+        **result,
+    }
+
+
 @router.get("/failed-jobs")
 async def get_failed_jobs(
     resolved: bool = False,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get failed jobs from the Dead Letter Queue."""
+    _assert_internal_dashboard_view_permission(current_user)
     result = await db.execute(
         select(FailedJob)
         .where(FailedJob.resolved == resolved)
@@ -324,9 +452,11 @@ async def _enqueue_dashboard_job(
 ) -> dict:
     allowed, depth, limit_depth = await job_queue_service.check_backpressure(queue_name)
     if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Queue busy for {job_type} ({depth}/{limit_depth}). Retry in a moment.",
+        raise job_queue_service.backpressure_exception(
+            queue_name=queue_name,
+            current_depth=depth,
+            depth_limit=limit_depth,
+            message=f"Queue busy for {job_type}. Retry shortly.",
         )
 
     payload_data = dict(payload or {})
@@ -365,6 +495,16 @@ async def _enqueue_dashboard_job(
 def _assert_agent_control_permission(user: User) -> None:
     if user.role not in {UserRole.director, UserRole.editor_chief}:
         raise HTTPException(status_code=403, detail="غير مسموح لك بتشغيل هذا الوكيل.")
+
+
+def _assert_internal_dashboard_view_permission(user: User) -> None:
+    if user.role not in {UserRole.director, UserRole.editor_chief}:
+        raise HTTPException(status_code=403, detail="Not allowed to view internal dashboard metrics.")
+
+
+def _assert_director_permission(user: User) -> None:
+    if user.role != UserRole.director:
+        raise HTTPException(status_code=403, detail="Only director can apply source control actions.")
 
 
 def _assert_newsroom_refresh_permission(user: User) -> None:
@@ -780,8 +920,9 @@ async def get_latest_published_monitor(
 
 
 @router.get("/agents/status")
-async def agents_status():
+async def agents_status(current_user: User = Depends(get_current_user)):
     """Get current agent statuses."""
+    _assert_internal_dashboard_view_permission(current_user)
     return {
         "scout": {"status": "ready", "description": "وكيل الكشاف - جمع الأخبار من المصادر"},
         "router": {"status": "ready", "description": "وكيل الموجه - التصنيف والتوجيه"},

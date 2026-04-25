@@ -5,7 +5,6 @@ CRUD operations for articles with filtering & pagination.
 """
 
 from datetime import datetime, timedelta
-import hashlib
 import math
 import re
 import unicodedata
@@ -15,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, select, func, desc, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.auth import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import (
@@ -28,6 +28,7 @@ from app.models import (
     UrgencyLevel,
 )
 from app.schemas import ArticleResponse, ArticleBrief, PaginatedResponse
+from app.services.embedding_service import embedding_service
 from app.services.trend_signal_service import bump_keyword_interactions, extract_keywords
 
 router = APIRouter(prefix="/news", tags=["News"])
@@ -74,21 +75,6 @@ LOCAL_PRIORITY_SOURCES = [
     "الخبر",
     "النهار",
 ]
-
-
-def _query_embedding(text: str, dim: int = 256) -> list[float]:
-    base = hashlib.sha256((text or "").encode("utf-8")).digest()
-    values = []
-    seed = base
-    while len(values) < dim:
-        seed = hashlib.sha256(seed).digest()
-        for b in seed:
-            values.append((b / 255.0) * 2.0 - 1.0)
-            if len(values) >= dim:
-                break
-    norm = math.sqrt(sum(v * v for v in values)) or 1.0
-    return [v / norm for v in values]
-
 
 def _tokenize(text: str) -> set[str]:
     return {m.group(0).lower() for m in TOKEN_RE.finditer(text or "")}
@@ -207,6 +193,7 @@ async def list_articles(
     search: Optional[str] = None,
     sort_by: str = Query("created_at", regex="^(created_at|crawled_at|importance_score|published_at)$"),
     local_first: bool = Query(True),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List articles with filtering and pagination."""
@@ -218,7 +205,6 @@ async def list_articles(
     breaking_cutoff = datetime.utcnow() - timedelta(minutes=settings.breaking_news_ttl_minutes)
     freshness_cutoff = datetime.utcnow() - timedelta(hours=settings.scout_max_article_age_hours)
     actionable_breaking_statuses = [NewsStatus.NEW, NewsStatus.CLASSIFIED, NewsStatus.CANDIDATE]
-    newsroom_fresh_statuses = [NewsStatus.NEW, NewsStatus.CLASSIFIED, NewsStatus.CANDIDATE]
 
     # Apply filters
     filters = []
@@ -226,16 +212,16 @@ async def list_articles(
         try:
             selected_status = NewsStatus(status)
             filters.append(Article.status == selected_status)
-            if selected_status in newsroom_fresh_statuses:
+            if selected_status not in {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED}:
                 filters.append(func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff)
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
     else:
-        # Keep newsroom list focused by hiding auto-archived noise by default.
+        # Keep newsroom list focused by hiding archived noise and stale non-published items.
         filters.append(Article.status != NewsStatus.ARCHIVED)
         filters.append(
             or_(
-                Article.status.notin_(newsroom_fresh_statuses),
+                Article.status == NewsStatus.PUBLISHED,
                 func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
             )
         )
@@ -288,6 +274,7 @@ async def list_articles(
 @router.get("/breaking/latest")
 async def get_breaking_news(
     limit: int = Query(5, ge=1, le=20),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get actionable breaking news for dashboard newsroom workflow."""
@@ -313,12 +300,28 @@ async def get_breaking_news(
 @router.get("/candidates/pending")
 async def get_pending_candidates(
     limit: int = Query(20, ge=1, le=100),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get articles pending editorial review."""
+    freshness_cutoff = datetime.utcnow() - timedelta(hours=settings.scout_max_article_age_hours)
+    pending_statuses = [NewsStatus.CANDIDATE]
+    if settings.editorial_desk_include_pre_candidate:
+        pending_statuses = [
+            NewsStatus.NEW,
+            NewsStatus.CLEANED,
+            NewsStatus.DEDUPED,
+            NewsStatus.CLASSIFIED,
+            NewsStatus.CANDIDATE,
+        ]
     result = await db.execute(
         select(Article)
-        .where(Article.status == NewsStatus.CANDIDATE)
+        .where(
+            and_(
+                Article.status.in_(pending_statuses),
+                func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
+            )
+        )
         .order_by(desc(Article.importance_score), desc(Article.created_at))
         .limit(limit)
     )
@@ -329,6 +332,7 @@ async def get_pending_candidates(
 @router.get("/insights")
 async def news_insights(
     article_ids: list[int] = Query(default=[]),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -390,12 +394,13 @@ async def semantic_search(
     mode: str = Query("editorial", pattern="^(editorial|semantic)$"),
     include_aggregators: bool = Query(False),
     strict_tokens: bool = Query(True),
+    _: object = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Hybrid retrieval on vectorized title/summary with editorial ranking.
     """
-    query_vec = _query_embedding(q, 256)
+    query_vec, _ = await embedding_service.embed_query(q)
     query_tokens_raw = _tokenize(q)
     query_tokens = {t for t in query_tokens_raw if t not in STOPWORDS} or query_tokens_raw
     query_norm = _normalize_text(q)

@@ -98,6 +98,7 @@ class SocialTask(Base):
     program_slot_id = Column(Integer, ForeignKey("program_slots.id"), nullable=True, index=True)
     event_id = Column(Integer, ForeignKey("event_memo_items.id"), nullable=True, index=True)
     article_id = Column(Integer, ForeignKey("articles.id"), nullable=True, index=True)
+    story_id = Column(Integer, ForeignKey("stories.id"), nullable=True, index=True)
 
     owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     owner_username = Column(String(64), nullable=True)
@@ -114,6 +115,7 @@ class SocialTask(Base):
         CheckConstraint("channel IN ('news','tv')", name="ck_social_tasks_channel"),
         CheckConstraint("status IN ('todo','in_progress','review','done','cancelled')", name="ck_social_tasks_status"),
         CheckConstraint("priority >= 1 AND priority <= 5", name="ck_social_tasks_priority"),
+        Index("ix_social_tasks_created_by_user_id", "created_by_user_id"),
         Index("ix_social_tasks_status_due", "status", "due_at"),
         Index("ix_social_tasks_channel_status_due", "channel", "status", "due_at"),
         Index("ix_social_tasks_owner_status_due", "owner_user_id", "status", "due_at"),
@@ -146,6 +148,29 @@ class SocialPost(Base):
     __table_args__ = (
         CheckConstraint("channel IN ('news','tv')", name="ck_social_posts_channel"),
         CheckConstraint("status IN ('draft','ready','approved','scheduled','published','failed')", name="ck_social_posts_status"),
+        Index("ix_social_posts_created_by_user_id", "created_by_user_id"),
         Index("ix_social_posts_task_status", "task_id", "status"),
         Index("ix_social_posts_platform_status_scheduled", "platform", "status", "scheduled_at"),
+    )
+
+
+class SocialPostVersion(Base):
+    __tablename__ = "social_post_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(Integer, ForeignKey("social_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_no = Column(Integer, nullable=False)
+    version_type = Column(String(32), nullable=False, default="edited")
+    content_text = Column(Text, nullable=False)
+    hashtags = Column(JSON, nullable=False, default=list)
+    media_urls = Column(JSON, nullable=False, default=list)
+    note = Column(Text, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_username = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "version_no", name="uq_social_post_versions_post_version"),
+        CheckConstraint("version_no >= 1", name="ck_social_post_versions_version_no"),
+        Index("ix_social_post_versions_post_created", "post_id", "created_at"),
     )

@@ -124,6 +124,13 @@ class ArticleVector(Base):
     __table_args__ = (
         UniqueConstraint("article_id", "chunk_id", "vector_type", name="uq_article_vectors_article_chunk_type"),
         Index("ix_article_vectors_article_type", "article_id", "vector_type"),
+        Index(
+            "ix_article_vectors_embedding_ivfflat",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
 
