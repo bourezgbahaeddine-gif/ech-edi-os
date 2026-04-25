@@ -10,6 +10,8 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
     NewsStatus.NEW: {NewsStatus.CLEANED, NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
     NewsStatus.CLEANED: {NewsStatus.DEDUPED, NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
     NewsStatus.DEDUPED: {NewsStatus.CLASSIFIED, NewsStatus.ARCHIVED, NewsStatus.REJECTED},
+    # Classified candidates may enter approved handoff only through editorial approval
+    # endpoints that run the shared governance gates.
     NewsStatus.CLASSIFIED: {
         NewsStatus.CANDIDATE,
         NewsStatus.APPROVED_HANDOFF,
@@ -19,6 +21,8 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
     NewsStatus.CANDIDATE: {NewsStatus.APPROVED, NewsStatus.REJECTED, NewsStatus.APPROVED_HANDOFF},
     NewsStatus.APPROVED: {NewsStatus.APPROVED_HANDOFF, NewsStatus.DRAFT_GENERATED, NewsStatus.ARCHIVED},
     NewsStatus.APPROVED_HANDOFF: {NewsStatus.DRAFT_GENERATED, NewsStatus.ARCHIVED},
+    # READY_FOR_MANUAL_PUBLISH remains in the state machine for chief/director approval
+    # flows. Journalist routes must still pass endpoint-level governance checks.
     NewsStatus.DRAFT_GENERATED: {
         NewsStatus.READY_FOR_CHIEF_APPROVAL,
         NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS,
@@ -32,6 +36,8 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
         NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS,
         NewsStatus.REJECTED,
     },
+    # Reservation overrides are allowed to reach manual-publish readiness only from the
+    # chief decision path with explicit notes and audit logging.
     NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS: {
         NewsStatus.READY_FOR_CHIEF_APPROVAL,
         NewsStatus.DRAFT_GENERATED,
@@ -40,6 +46,8 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
     },
     NewsStatus.READY_FOR_MANUAL_PUBLISH: {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED},
     NewsStatus.PUBLISHED: {NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.ARCHIVED},
+    # Reopening rejected content into handoff is allowed only when the shared handoff
+    # governance gates pass.
     NewsStatus.REJECTED: {NewsStatus.APPROVED_HANDOFF},
     NewsStatus.ARCHIVED: set(),
 }

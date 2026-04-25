@@ -293,7 +293,6 @@ class RouterAgent:
             expected_current=expected_status,
             entity=f"article:{article.id}",
         )
-        article.status = locked_article.status
 
     async def process_batch(self, db: AsyncSession, limit: int = 50) -> dict:
         """Process a batch of NEW articles through triage."""

@@ -119,6 +119,48 @@ async def test_make_decision_approve_uses_shared_handoff_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_make_decision_approve_returns_gate_blockers(monkeypatch):
+    article = _article(NewsStatus.CANDIDATE)
+    db = _DbStub(article)
+
+    async def _deny_gate(*_args, **_kwargs):
+        raise HTTPException(
+            status_code=412,
+            detail={
+                "code": "quality_gate_blocked",
+                "message": "blocked",
+                "blockers": ["fact blocker"],
+            },
+        )
+
+    async def _should_not_run(*_args, **_kwargs):
+        raise AssertionError("transition should not run when approve gate fails")
+
+    monkeypatch.setattr(editorial_route, "assert_article_can_enter_approved_handoff", _deny_gate)
+    monkeypatch.setattr(editorial_route, "_transition_article_status", _should_not_run)
+
+    payload = SimpleNamespace(
+        decision="approve",
+        reason="ok",
+        edited_title=None,
+        edited_body=None,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await editorial_route.make_decision(
+            article_id=101,
+            data=payload,
+            db=db,
+            current_user=_chief(),
+        )
+
+    assert exc_info.value.status_code == 412
+    assert exc_info.value.detail["code"] == "quality_gate_blocked"
+    assert exc_info.value.detail["blockers"] == ["fact blocker"]
+    assert article.status == NewsStatus.CANDIDATE
+
+
+@pytest.mark.asyncio
 async def test_handoff_blocks_candidate_until_shared_gate_passes(monkeypatch):
     article = _article(NewsStatus.CANDIDATE)
     db = _DbStub(article)
@@ -144,7 +186,107 @@ async def test_handoff_blocks_candidate_until_shared_gate_passes(monkeypatch):
         )
 
     assert exc_info.value.status_code == 412
+    assert exc_info.value.detail["code"] == "quality_gate_blocked"
+    assert exc_info.value.detail["blockers"] == ["policy blocker"]
     assert exc_info.value.detail["blocking_reasons"] == ["policy blocker"]
+
+
+@pytest.mark.asyncio
+async def test_handoff_candidate_with_passing_gates_proceeds(monkeypatch):
+    article = _article(NewsStatus.CANDIDATE)
+    db = _DbStub(article)
+    transitions: list[NewsStatus] = []
+
+    async def _allow_gate(*_args, **_kwargs):
+        return None
+
+    async def _fake_transition(*, article, target_status, **_kwargs):
+        transitions.append(target_status)
+        article.status = target_status
+
+    async def _fake_write(*_args, **_kwargs):
+        return {"work_id": "WRK-1", "draft_id": 88, "version": 1}
+
+    async def _noop_keywords(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(editorial_route, "assert_article_can_enter_approved_handoff", _allow_gate)
+    monkeypatch.setattr(editorial_route, "_transition_article_status", _fake_transition)
+    monkeypatch.setattr(editorial_route.scribe_agent, "write_article", _fake_write)
+    monkeypatch.setattr(editorial_route, "bump_keyword_interactions", _noop_keywords)
+    monkeypatch.setattr(editorial_route, "extract_keywords", lambda _text: [])
+
+    response = await editorial_route.handoff_to_scribe(
+        article_id=101,
+        db=db,
+        current_user=_journalist(),
+    )
+
+    assert transitions == [NewsStatus.APPROVED_HANDOFF]
+    assert response["draft_id"] == 88
+
+
+@pytest.mark.asyncio
+async def test_handoff_approved_handoff_keeps_existing_behavior(monkeypatch):
+    article = _article(NewsStatus.APPROVED_HANDOFF)
+    db = _DbStub(article)
+
+    async def _should_not_run(*_args, **_kwargs):
+        raise AssertionError("shared gate should not run for already approved handoff")
+
+    async def _fake_write(*_args, **_kwargs):
+        return {"work_id": "WRK-1", "draft_id": 91, "version": 3}
+
+    async def _noop_keywords(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(editorial_route, "assert_article_can_enter_approved_handoff", _should_not_run)
+    monkeypatch.setattr(editorial_route.scribe_agent, "write_article", _fake_write)
+    monkeypatch.setattr(editorial_route, "bump_keyword_interactions", _noop_keywords)
+    monkeypatch.setattr(editorial_route, "extract_keywords", lambda _text: [])
+
+    response = await editorial_route.handoff_to_scribe(
+        article_id=101,
+        db=db,
+        current_user=_journalist(),
+    )
+
+    assert response["draft_id"] == 91
+    assert article.status == NewsStatus.APPROVED_HANDOFF
+
+
+@pytest.mark.asyncio
+async def test_handoff_rejected_reopen_is_blocked_without_passing_gates(monkeypatch):
+    article = _article(NewsStatus.REJECTED)
+    db = _DbStub(article)
+
+    async def _deny_gate(*_args, **_kwargs):
+        raise HTTPException(
+            status_code=412,
+            detail={
+                "code": "quality_gate_blocked",
+                "message": "blocked",
+                "blockers": ["reopen blocker"],
+            },
+        )
+
+    async def _should_not_run(*_args, **_kwargs):
+        raise AssertionError("transition/scribe should not run when reopen gate fails")
+
+    monkeypatch.setattr(editorial_route, "assert_article_can_enter_approved_handoff", _deny_gate)
+    monkeypatch.setattr(editorial_route, "_transition_article_status", _should_not_run)
+    monkeypatch.setattr(editorial_route.scribe_agent, "write_article", _should_not_run)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await editorial_route.handoff_to_scribe(
+            article_id=101,
+            db=db,
+            current_user=_journalist(),
+        )
+
+    assert exc_info.value.status_code == 412
+    assert exc_info.value.detail["blockers"] == ["reopen blocker"]
+    assert article.status == NewsStatus.REJECTED
 
 
 @pytest.mark.asyncio
@@ -232,3 +374,44 @@ async def test_self_approve_submits_for_chief_instead_of_direct_publish(monkeypa
     assert "force_direct_publish" not in calls[0]
     assert response["submitted_for_chief_approval"] is True
     assert "رئيس التحرير" in response["message"]
+
+
+@pytest.mark.asyncio
+async def test_self_approve_disabled_by_default(monkeypatch):
+    db = _DbStub(None)
+
+    monkeypatch.setattr(editorial_route.settings, "editorial_direct_publish_enabled", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await editorial_route.self_approve_workspace_draft(
+            work_id="WRK-1",
+            db=db,
+            current_user=_journalist(),
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_chief_approve_still_reaches_ready_for_manual_publish(monkeypatch):
+    article = _article(NewsStatus.READY_FOR_CHIEF_APPROVAL)
+    db = _DbStub(article)
+    payload = editorial_route.ChiefFinalDecisionRequest(decision="approve", notes=None)
+
+    async def _noop_gate(*_args, **_kwargs):
+        return None
+
+    async def _fake_transition(*, article, target_status, **_kwargs):
+        article.status = target_status
+
+    monkeypatch.setattr(editorial_route, "_assert_publish_gate_and_constitution", _noop_gate)
+    monkeypatch.setattr(editorial_route, "_transition_article_status", _fake_transition)
+
+    response = await editorial_route.chief_final_decision(
+        article_id=101,
+        payload=payload,
+        db=db,
+        current_user=_chief(),
+    )
+
+    assert response["status"] == NewsStatus.READY_FOR_MANUAL_PUBLISH.value

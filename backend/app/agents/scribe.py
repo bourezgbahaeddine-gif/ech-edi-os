@@ -133,7 +133,6 @@ class ScribeAgent:
                 expected_current=expected_status,
                 entity=f"article:{article.id}",
             )
-            article.status = locked_article.status
             article.updated_at = datetime.utcnow()
 
             if fixed_work_id:

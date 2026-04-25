@@ -1023,7 +1023,6 @@ async def _transition_article_status(
         expected_current=expected_status,
         entity=f"article:{article.id}",
     )
-    article.status = locked_article.status
     await audit_service.log_action(
         db,
         action=action,
@@ -1414,11 +1413,40 @@ async def assert_article_can_enter_approved_handoff(
     if gate_result.passed:
         return
 
+    blockers = [issue.message for issue in gate_result.blockers]
+    logger.warning(
+        "approved_handoff_blocked",
+        article_id=article.id,
+        actor_user_id=current_user.id,
+        actor_username=current_user.username,
+        from_state=article.status.value if article.status else NewsStatus.NEW.value,
+        to_state=NewsStatus.APPROVED_HANDOFF.value,
+        source=source,
+        blockers=blockers,
+    )
+    await audit_service.log_action(
+        db,
+        action="approved_handoff_blocked",
+        entity_type="article",
+        entity_id=article.id,
+        actor=current_user,
+        reason=source,
+        from_state=article.status.value if article.status else NewsStatus.NEW.value,
+        to_state=NewsStatus.APPROVED_HANDOFF.value,
+        details={
+            "code": "quality_gate_blocked",
+            "source": source,
+            "blockers": blockers,
+        },
+    )
+
     raise HTTPException(
         status_code=412,
         detail={
+            "code": "quality_gate_blocked",
             "message": "لا يمكن تحويل الخبر إلى مرحلة التسليم قبل تجاوز بوابة الجودة.",
-            "blocking_reasons": [issue.message for issue in gate_result.blockers],
+            "blockers": blockers,
+            "blocking_reasons": blockers,
             "source": source,
         },
     )
@@ -2923,6 +2951,8 @@ async def self_approve_workspace_draft(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, {UserRole.journalist})
+    if not settings.editorial_direct_publish_enabled:
+        raise HTTPException(status_code=403, detail="Self-approve is disabled by configuration.")
     draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")

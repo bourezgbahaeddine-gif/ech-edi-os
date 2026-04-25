@@ -22,3 +22,11 @@ def test_invalid_transition_rejected_to_candidate() -> None:
 
 def test_valid_transition_published_to_ready_for_manual_publish() -> None:
     assert can_transition(NewsStatus.PUBLISHED, NewsStatus.READY_FOR_MANUAL_PUBLISH)
+
+
+def test_valid_transition_draft_generated_to_ready_for_manual_publish() -> None:
+    assert can_transition(NewsStatus.DRAFT_GENERATED, NewsStatus.READY_FOR_MANUAL_PUBLISH)
+
+
+def test_valid_transition_reservations_to_ready_for_manual_publish() -> None:
+    assert can_transition(NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS, NewsStatus.READY_FOR_MANUAL_PUBLISH)
