@@ -318,7 +318,10 @@ class PublishedContentMonitorAgent:
         audits: list[dict[str, Any]] = []
 
         connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(connector=connector, headers={"User-Agent": "EchoroukSwarm/1.0"}) as session:
+        async with aiohttp.ClientSession(
+            connector=connector,
+            headers={"User-Agent": f"{settings.app_name.replace(' ', '')}/{settings.version}"},
+        ) as session:
             # تقليل العدد المتزامن لضمان استقرار الـ API تحت الضغط
             semaphore = asyncio.Semaphore(settings.published_monitor_max_concurrent_tasks or 2)
 
@@ -383,7 +386,9 @@ class PublishedContentMonitorAgent:
 
     async def _fetch_feed_entries(self, feed_url: str, timeout_total: int) -> list[dict[str, Any]]:
         try:
-            async with aiohttp.ClientSession(headers={"User-Agent": "EchoroukSwarm/1.0"}) as session:
+            async with aiohttp.ClientSession(
+                headers={"User-Agent": f"{settings.app_name.replace(' ', '')}/{settings.version}"}
+            ) as session:
                 async with session.get(feed_url, timeout=aiohttp.ClientTimeout(total=timeout_total)) as resp:
                     if resp.status != 200:
                         logger.warning("published_monitor_feed_http_error", status=resp.status, feed_url=feed_url)

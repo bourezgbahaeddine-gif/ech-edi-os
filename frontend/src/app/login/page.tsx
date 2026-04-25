@@ -53,8 +53,8 @@ export default function LoginPage() {
                         <div className="w-16 h-16 mx-auto rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden mb-4">
                             <Image src="/ech-logo.png" alt="Echorouk" width={40} height={40} className="w-10 h-10 object-contain" />
                         </div>
-                        <h1 className="text-2xl font-bold text-white">Echorouk Editorial os</h1>
-                        <p className="text-sm text-gray-400 mt-1">Intelligent Editorial Workflows</p>
+                        <h1 className="text-2xl font-bold text-white">Echorouk Editorial OS</h1>
+                        <p className="text-sm text-gray-400 mt-1">The Intelligent Newsroom Operating System</p>
                     </div>
 
                     {/* Constitution Notice */}
@@ -141,10 +141,10 @@ export default function LoginPage() {
                     {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-white/5 text-center">
                         <p className="text-[10px] text-gray-600">
-                            نظام التشغيل الذكي لسير العمل التحريري — الإصدار 1.1
+                            غرفة تحرير الشروق الذكية — الإصدار 1.1
                         </p>
                         <p className="text-[10px] text-gray-700 mt-1">
-                            Echorouk Editorial os © 2026 — Bourezg Baha eddine
+                            Echorouk Editorial OS © 2026 — Bourezg Baha eddine
                         </p>
                         <p className="text-[10px] text-gray-700 mt-1">
                             الحقوق محفوظة — يمنع النسخ أو الاستخدام دون إذن قانوني

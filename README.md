@@ -1,10 +1,10 @@
-<div align="center">
+﻿<div align="center">
 
-# 🚀 Echorouk Editorial OS — نظام التشغيل الذكي لسير العمل التحريري
+# 🚀 Echorouk Editorial OS — غرفة تحرير الشروق الذكية
 
-### The Operating System for Intelligent Editorial Workflows
+### The Intelligent Newsroom Operating System
 
-**Echorouk Editorial OS is an enterprise operating system for managing editorial content lifecycle from capture to manual-publish readiness, with strict governance and mandatory Human-in-the-Loop.**
+**Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -19,7 +19,7 @@
 
 ## 📖 Overview
 
-**Echorouk Editorial OS** is an enterprise operating system for intelligent editorial workflows at [Echorouk Online](https://www.echoroukonline.com). It manages the editorial lifecycle from capture to manual-publish readiness with strict governance and mandatory Human-in-the-Loop control.
+**Echorouk Editorial OS** is a newsroom operating system for [Echorouk Online](https://www.echoroukonline.com). It manages the editorial lifecycle from signal capture to Ready for Manual Publish with strict governance and mandatory Human-in-the-Loop control.
 
 ### 🎯 Key Principles
 
@@ -85,7 +85,7 @@ RSS Sources (300+)
 ## 🏗️ Architecture
 
 ```
-echorouk-swarm/
+ech-edi-os/
 ├── backend/
 │   ├── app/
 │   │   ├── core/          # Config, Database, Logging
@@ -153,8 +153,8 @@ Recommended read order:
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/your-username/echorouk-swarm.git
-cd echorouk-swarm
+git clone https://github.com/your-username/ech-edi-os.git
+cd ech-edi-os
 
 # Copy environment template
 cp .env.example .env

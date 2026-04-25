@@ -54,7 +54,7 @@
 ## 8) أوامر التشغيل الأساسية
 تحديث وتشغيل:
 ```
-cd ~/ech-swarm
+cd ~/ech-edi-os
 git pull --ff-only origin main
 docker compose up -d --build --force-recreate backend worker frontend
 docker compose exec backend alembic upgrade head

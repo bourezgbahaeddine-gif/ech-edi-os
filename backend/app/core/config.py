@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "Echorouk Editorial OS"
+    public_name: str = "Echorouk Editorial OS"
+    tagline: str = "The Intelligent Newsroom Operating System"
+    ar_tagline: str = "غرفة تحرير الشروق الذكية"
+    version: str = "1.1.0"
     app_env: str = "development"
     app_debug: bool = True
     app_secret_key: str = Field(..., min_length=32)
@@ -35,8 +39,8 @@ class Settings(BaseSettings):
     # Database
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_db: str = "echorouk_db"
-    postgres_user: str = "echorouk"
+    postgres_db: str = "echorouk_editorial_os"
+    postgres_user: str = "echorouk_os"
     postgres_password: str = Field(..., min_length=8)
 
     @property

@@ -1,7 +1,7 @@
-# PROJECT KNOWLEDGE BASE
+﻿# PROJECT KNOWLEDGE BASE
 
 ## 1) Project Summary
-Echorouk Swarm is an editorial operations platform that ingests news from feeds, routes and classifies content, prepares drafts, and exposes dashboard workflows for newsroom users.
+Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.
 
 Core objective:
 - Keep a continuous, reliable, and auditable news pipeline.

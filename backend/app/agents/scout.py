@@ -39,7 +39,9 @@ from app.services.settings_service import settings_service
 
 logger = get_logger("agent.scout")
 settings = get_settings()
-DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (EchoroukSwarm/1.0)"}
+DEFAULT_HEADERS = {
+    "User-Agent": f"Mozilla/5.0 ({settings.app_name.replace(' ', '')}/{settings.version})"
+}
 SCOUT_HARD_MAX_ARTICLE_AGE_HOURS = 24 * 31  # newsroom safety rail: never ingest older than 31 days
 
 

@@ -1,7 +1,9 @@
-# AGENT ONBOARDING
+﻿# AGENT ONBOARDING
 
 ## Purpose
 This file defines the minimum startup sequence for any coding agent working on this repository.
+
+Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.
 
 ## Mandatory Read Order
 1. `PROJECT_KNOWLEDGE_BASE.md`

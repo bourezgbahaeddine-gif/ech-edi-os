@@ -1,8 +1,8 @@
-"""
+﻿"""
 ╔══════════════════════════════════════════════════╗
 ║      Echorouk Editorial OS                         ║
-║ The Operating System for Intelligent Editorial     ║
-║ Workflows                                          ║
+║ The Intelligent Newsroom Operating System          ║
+║ غرفة تحرير الشروق الذكية                           ║
 ║                                                   ║
 ║    Built with: FastAPI + Gemini + PostgreSQL       ║
 ║    Version: 1.1.0 (Async AI Isolation)            ║
@@ -597,11 +597,12 @@ async def lifespan(app: FastAPI):
 # ── Create FastAPI App ──
 
 app = FastAPI(
-    title="Echorouk Editorial OS",
+    title=settings.public_name,
     description=(
-        "The Operating System for Intelligent Editorial Workflows.\n\n"
-        "Enterprise platform to manage editorial lifecycle from capture "
-        "to manual-publish readiness, with strict governance and mandatory Human-in-the-Loop.\n\n"
+        f"{settings.tagline}.\n\n"
+        f"{settings.public_name} is a newsroom operating system that manages the editorial lifecycle "
+        "from signal capture to Ready for Manual Publish, with strict governance and mandatory "
+        "Human-in-the-Loop.\n\n"
         "**Agents:**\n"
         "- 🔍 Scout (الكشّاف): RSS ingestion from 300+ sources\n"
         "- 🧭 Router (الموجّه): AI classification & priority routing\n"
@@ -609,7 +610,7 @@ app = FastAPI(
         "- 📡 Trend Radar (رادار التراند): Real-time trend detection\n"
         "- 🎙️ Audio (المذيع): Automated audio news briefings\n"
     ),
-    version="1.1.0",
+    version=settings.version,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -787,8 +788,9 @@ async def health_check():
 async def root():
     """Welcome endpoint."""
     return {
-        "name": "Echorouk Editorial OS",
-        "name_ar": "نظام التشغيل الذكي لسير العمل التحريري",
+        "name": settings.public_name,
+        "name_ar": settings.ar_tagline,
+        "tagline": settings.tagline,
         "version": app.version,
         "release_name": "Async AI Isolation",
         "status": "operational",

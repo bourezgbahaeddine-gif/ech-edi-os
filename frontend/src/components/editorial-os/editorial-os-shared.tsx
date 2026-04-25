@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import type { ComponentType } from 'react';
 import {
     ArrowLeft,
@@ -139,7 +139,7 @@ export function SharedFooterNote() {
         <section className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-6" dir="rtl">
             <h2 className="text-xl font-semibold text-white">الخلاصة</h2>
             <p className="mt-3 text-base leading-8 text-slate-100">
-                Editorial OS ليس أداة AI مستقلة، بل نظام عمل لغرفة الأخبار. هو يجمع بين الالتقاط، التصنيف،
+                Echorouk Editorial OS ??? ???? AI ??????? ?? ???? ??? ????? ???????. ?? ???? ??? ????????? ????????
                 التوليد الأولي، التحرير، التحقق، الاعتماد، والجاهزية للنشر اليدوي داخل مسار واحد متكامل.
                 لهذا السبب، حين تدخل المنصة، فأنت لا تدخل إلى “محرر نصوص ذكي”، بل إلى بنية تشغيل تحريرية كاملة
                 تنظّم كيف تتحرك المادة، ومن يراجعها، ومتى تصبح جاهزة للنشر.

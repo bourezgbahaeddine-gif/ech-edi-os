@@ -85,8 +85,8 @@ export default function Sidebar({
                     </div>
                     {!collapsed && (
                         <div className="overflow-hidden">
-                            <h1 className="truncate text-sm font-bold text-[#F8FAFC]">Echorouk Editorial os</h1>
-                            <p className="text-[10px] font-medium text-[#CBD5E1]">مسار يومي أوضح حسب الدور</p>
+                            <h1 className="truncate text-sm font-bold text-[#F8FAFC]">Echorouk Editorial OS</h1>
+                            <p className="text-[10px] font-medium text-[#CBD5E1]">غرفة تحرير الشروق الذكية</p>
                         </div>
                     )}
                 </div>

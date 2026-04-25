@@ -36,7 +36,7 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
         NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS,
         NewsStatus.REJECTED,
     },
-    # Reservation overrides are allowed to reach manual-publish readiness only from the
+    # Reservation overrides are allowed to reach Ready for Manual Publish only from the
     # chief decision path with explicit notes and audit logging.
     NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS: {
         NewsStatus.READY_FOR_CHIEF_APPROVAL,

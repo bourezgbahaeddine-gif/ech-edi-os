@@ -1,7 +1,7 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-$HOME/ech-swarm}"
+PROJECT_DIR="${PROJECT_DIR:-$HOME/ech-edi-os}"
 BRANCH="${BRANCH:-main}"
 DOMAIN="${DOMAIN:-echswarm.agentdz.com}"
 

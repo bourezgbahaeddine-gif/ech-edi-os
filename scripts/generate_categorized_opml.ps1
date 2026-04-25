@@ -1,12 +1,24 @@
 param(
     [string]$LegacyPath = 'D:\Echorouk Editorial OS\ech_sources.opml',
     [string]$EditorialPath = 'D:\Echorouk Editorial OS\Editorial_feeds.xml',
-    [string]$OutputPath = 'D:\Echorouk Editorial OS\swarm_backup\ech-swarm\ech_sources_final_categorized.opml',
-    [string]$StrictOutputPath = 'D:\Echorouk Editorial OS\swarm_backup\ech-swarm\freshrss_master_clean.opml',
-    [string]$ReviewOutputPath = 'D:\Echorouk Editorial OS\swarm_backup\ech-swarm\uncategorized_review.opml'
+    [string]$OutputPath = '',
+    [string]$StrictOutputPath = '',
+    [string]$ReviewOutputPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot = Split-Path -Parent $ScriptRoot
+
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    $OutputPath = Join-Path $RepoRoot 'ech_sources_final_categorized.opml'
+}
+if ([string]::IsNullOrWhiteSpace($StrictOutputPath)) {
+    $StrictOutputPath = Join-Path $RepoRoot 'freshrss_master_clean.opml'
+}
+if ([string]::IsNullOrWhiteSpace($ReviewOutputPath)) {
+    $ReviewOutputPath = Join-Path $RepoRoot 'uncategorized_review.opml'
+}
 
 function Normalize-Url([string]$url) {
     if ([string]::IsNullOrWhiteSpace($url)) { return '' }

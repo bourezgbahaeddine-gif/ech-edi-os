@@ -1,4 +1,4 @@
-name: echorouk_editorial_os
+name: ech-edi-os
 
 services:
   backend:
@@ -10,7 +10,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
-    container_name: ech-backend
+    container_name: ech-edi-os-backend
     env_file:
       - .env
     environment:
@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   worker:
     # Recommended production limits via compose override or orchestrator:
@@ -42,7 +42,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
-    container_name: ech-worker
+    container_name: ech-edi-os-worker
     command: >
       celery -A app.queue.celery_app:celery_app worker
       --loglevel=INFO
@@ -63,7 +63,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   flower:
     build:
@@ -71,7 +71,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         INSTALL_DOCLING: ${INSTALL_DOCLING:-false}
-    container_name: ech-flower
+    container_name: ech-edi-os-flower
     command: celery -A app.queue.celery_app:celery_app flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH_USER?FLOWER_BASIC_AUTH_USER is required}:${FLOWER_BASIC_AUTH_PASSWORD?FLOWER_BASIC_AUTH_PASSWORD is required}
     env_file:
       - .env
@@ -88,7 +88,7 @@ services:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   frontend:
     build:
@@ -98,7 +98,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
         NEXT_PUBLIC_FLOWER_URL: ${NEXT_PUBLIC_FLOWER_URL:-http://127.0.0.1:5555}
         NEXT_PUBLIC_BREAKING_TTL_MINUTES: ${NEXT_PUBLIC_BREAKING_TTL_MINUTES:-60}
-    container_name: ech-frontend
+    container_name: ech-edi-os-frontend
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
       NEXT_PUBLIC_FLOWER_URL: ${NEXT_PUBLIC_FLOWER_URL:-http://127.0.0.1:5555}
@@ -109,14 +109,14 @@ services:
       - backend
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: ech-postgres
+    container_name: ech-edi-os-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-echorouk_db}
-      POSTGRES_USER: ${POSTGRES_USER:-echorouk}
+      POSTGRES_DB: ${POSTGRES_DB:-echorouk_editorial_os}
+      POSTGRES_USER: ${POSTGRES_USER:-echorouk_os}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     expose:
       - "5432"
@@ -125,17 +125,17 @@ services:
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./scripts/seed_sources.sql:/docker-entrypoint-initdb.d/02-seed-sources.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echorouk} -d ${POSTGRES_DB:-echorouk_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echorouk_os} -d ${POSTGRES_DB:-echorouk_editorial_os}"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   redis:
     image: redis:7-alpine
-    container_name: ech-redis
+    container_name: ech-edi-os-redis
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD?REDIS_PASSWORD is required}
     command: sh -c 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
@@ -150,11 +150,11 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: ech-minio
+    container_name: ech-edi-os-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
@@ -171,11 +171,11 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   freshrss-db:
     image: mariadb:11
-    container_name: ech-freshrss-db
+    container_name: ech-edi-os-freshrss-db
     environment:
       MYSQL_ROOT_PASSWORD: ${FRESHRSS_DB_ROOT_PASSWORD?FRESHRSS_DB_ROOT_PASSWORD is required}
       MYSQL_DATABASE: ${FRESHRSS_DB_NAME:-freshrss}
@@ -190,11 +190,11 @@ services:
       retries: 10
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   freshrss:
     image: freshrss/freshrss:1.28.1
-    container_name: ech-freshrss
+    container_name: ech-edi-os-freshrss
     depends_on:
       freshrss-db:
         condition: service_healthy
@@ -231,11 +231,11 @@ services:
       - freshrss_extensions:/var/www/FreshRSS/extensions
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
   rssbridge:
     image: rssbridge/rss-bridge:sha-b8f3e32
-    container_name: ech-rssbridge
+    container_name: ech-edi-os-rssbridge
     ports:
       - "127.0.0.1:8083:80"
     healthcheck:
@@ -248,16 +248,23 @@ services:
       - ./docs/rssbridge/whitelist.txt:/app/whitelist.txt:ro
     restart: unless-stopped
     networks:
-      - ech-network
+      - app-network
 
 volumes:
   pgdata:
+    name: ech_edi_os_pgdata
   redis_data:
+    name: ech_edi_os_redis_data
   minio_data:
+    name: ech_edi_os_minio_data
   freshrss_db_data:
+    name: ech_edi_os_freshrss_db_data
   freshrss_data:
+    name: ech_edi_os_freshrss_data
   freshrss_extensions:
+    name: ech_edi_os_freshrss_extensions
 
 networks:
-  ech-network:
+  app-network:
+    name: ech-edi-os-network
     driver: bridge

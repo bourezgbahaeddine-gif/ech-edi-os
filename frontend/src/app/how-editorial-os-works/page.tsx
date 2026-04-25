@@ -1,4 +1,4 @@
-import {
+﻿import {
     RoleStartCta,
     SharedFooterNote,
     StageCard,
@@ -11,8 +11,8 @@ export default function HowEditorialOsWorksPage() {
         <div className="space-y-8" dir="rtl">
             <section className="rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,0.18),transparent_35%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(15,23,42,0.72))] p-8">
                 <div className="max-w-4xl space-y-4">
-                    <p className="text-sm font-medium text-cyan-300">Editorial OS</p>
-                    <h1 className="text-4xl font-bold tracking-tight text-white">كيف تعمل منصة Editorial OS؟</h1>
+                    <p className="text-sm font-medium text-cyan-300">Echorouk Editorial OS</p>
+                    <h1 className="text-4xl font-bold tracking-tight text-white">كيف تعمل غرفة تحرير الشروق الذكية؟</h1>
                     <p className="text-lg leading-9 text-slate-200">
                         منصة تشغيل تحريرية متكاملة تدير دورة الخبر من الالتقاط، إلى التصنيف، إلى كتابة المسودة،
                         إلى التحرير، إلى التحقق والجودة، ثم الاعتماد النهائي قبل الجاهزية للنشر اليدوي.

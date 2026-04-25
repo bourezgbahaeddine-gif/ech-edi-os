@@ -1,6 +1,6 @@
 # Echorouk Editorial OS — Agent Documentation
 
-Echorouk Editorial OS is an enterprise operating system for managing editorial content lifecycle from capture to manual-publish readiness, with strict governance and mandatory Human-in-the-Loop.
+Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.
 
 
 ## Agent Overview

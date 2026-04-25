@@ -1,5 +1,7 @@
 # New Server Deploy Checklist
 
+Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.
+
 ## Stack Summary
 
 - `frontend`: Next.js 16 standalone container on port `3000`
@@ -36,6 +38,16 @@
 
 7. There is no reverse proxy config in the repo.
    Nginx or Caddy on the server still needs to be prepared for domain routing and SSL.
+
+8. `docker-compose.yml` now uses the canonical slug `ech-edi-os` for project, container, network, and volume names.
+   If you are migrating an older production stack that still uses `ech-swarm` names, do not switch volumes blindly.
+
+## Legacy Stack Migration Note
+
+- Old stack names such as `ech-swarm` are legacy and must be treated as historical runtime identifiers.
+- Renaming containers is straightforward after a rebuild, but named volumes require deliberate migration or explicit reuse.
+- Before switching a live server, back up PostgreSQL, Redis, MinIO, and FreshRSS data and verify the target volume mapping.
+- If the server still runs a private override such as `docker-compose.ssh.yml`, update that override manually before cutover.
 
 ## Files To Review Before First Deploy
 

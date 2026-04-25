@@ -3,7 +3,7 @@
 Last updated: 2026-04-11
 
 ## 1) System Overview
-Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to manual-publish readiness.
+Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish, with strict governance and mandatory Human-in-the-Loop.
 
 It combines:
 - ingestion and deduplication

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { BookOpen, CheckCircle2, FileText, SearchCheck, Sparkles } from 'lucide-react';
 
 type PromptSection = {
@@ -76,7 +76,7 @@ export default function PromptPlaybookPage() {
           <p className="text-sm font-medium text-cyan-300">Prompt Playbook</p>
           <h1 className="text-4xl font-bold tracking-tight text-white">دليل البرومبتات داخل سير العمل</h1>
           <p className="text-lg leading-9 text-slate-200">
-            هذا الدليل يربط البرومبت بالمرحلة الصحيحة داخل Editorial OS: <span className="font-semibold text-white">Scribe</span> للمسودة الأولى،
+            ??? ?????? ???? ???????? ???????? ??????? ???? Echorouk Editorial OS: <span className="font-semibold text-white">Scribe</span> ??????? ???????
             <span className="font-semibold text-white"> Smart Editor</span> للعناوين والتحسين، <span className="font-semibold text-white">Quality Gates</span> للفحص،
             و<span className="font-semibold text-white">Digital Compose</span> للمنشورات والحِزم، مع استخدام <span className="font-semibold text-white">Archive + RAG</span> كسياق لا كبديل عن الوقائع الحالية.
           </p>
@@ -213,7 +213,7 @@ export default function PromptPlaybookPage() {
       <section className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-6">
         <h2 className="text-xl font-semibold text-white">الخلاصة</h2>
         <p className="mt-3 text-base leading-8 text-slate-100">
-          أفضل استخدام للبرومبت داخل Editorial OS هو أن يصبح <span className="font-semibold text-white">جزءًا من سير العمل</span>:
+          ???? ??????? ???????? ???? Echorouk Editorial OS ?? ?? ???? <span className="font-semibold text-white">????? ?? ??? ?????</span>:
           مسودة أولى في Scribe، تحسين وعناوين في Smart Editor، فحص قبل الاعتماد في Quality Gates، ثم تحويل منظم إلى Compose رقمي أو سياق أرشيفي عند الحاجة.
         </p>
       </section>

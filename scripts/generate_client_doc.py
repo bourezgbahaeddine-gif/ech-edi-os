@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -25,9 +25,9 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 CONTENT = {
     "cover": {
         "title": "Echorouk Editorial OS",
-        "subtitle_ar": "منصة غرفة الأخبار الذكية",
+        "subtitle_ar": "???? ????? ?????? ??????",
         "subtitle_fr": "Plateforme de Rédaction Intelligente",
-        "subtitle_en": "Intelligent Newsroom Platform",
+        "subtitle_en": "The Intelligent Newsroom Operating System",
         "audience": "غرف الأخبار | Newsrooms | Rédactions",
         "version": "الإصدار: 1.0",
         "date": "التاريخ: 29 مارس 2026",
@@ -46,7 +46,7 @@ CONTENT = {
         "title": "الوثيقة التعريفية الرسمية – العربية",
         "sections": [
             ("1) تعريف مختصر بالمنصة", [
-                "منصة غرفة الأخبار الذكية هي نظام عمل متكامل يدير دورة الخبر بالكامل، من الاستقبال والتحرير وحتى الاعتماد والنشر.",
+                "???? ????? ?????? ?????? ?? ???? ????? ????? ??????? ???? ???? ????? ??????? ?? ?????? ??????? ???? Ready for Manual Publish ?? ????? ????? ?Human-in-the-Loop ??????.",
                 "تجمع المنصة بين أدوات تحرير ذكية، تقارير تدقيق وتحقق، ومسار اعتماد واضح يضمن الجودة قبل النشر.",
             ]),
             ("2) لماذا هذه المنصة؟", [
@@ -90,7 +90,7 @@ CONTENT = {
         "title": "Document de Présentation – Français",
         "sections": [
             ("1) Présentation rapide", [
-                "Editorial OS est un système complet qui gère le cycle de vie d’un article, de la réception jusqu’à la publication.",
+                "Echorouk Editorial OS est un syst?me d?exploitation de newsroom qui g?re le cycle ?ditorial du signal jusqu?? Ready for Manual Publish.",
                 "Il combine un éditeur intelligent, des rapports de qualité et un workflow clair d’approbation.",
             ]),
             ("2) Pourquoi cette plateforme ?", [
@@ -134,7 +134,7 @@ CONTENT = {
         "title": "Official Client Presentation – English",
         "sections": [
             ("1) Quick Overview", [
-                "Editorial OS is a full newsroom platform that manages the entire news lifecycle.",
+                "Echorouk Editorial OS is a newsroom operating system that manages the editorial lifecycle from signal capture to Ready for Manual Publish.",
                 "It combines a smart editor, quality reports, and a clear approval workflow.",
             ]),
             ("2) Why This Platform?", [
