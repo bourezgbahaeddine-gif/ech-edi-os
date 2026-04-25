@@ -40,12 +40,23 @@ VIEW_ALLOWED = {
 
 def _require_run(user: User) -> None:
     if user.role not in RUN_ALLOWED:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="تشغيل المحاكي متاح للمحرر ورئيس التحرير والمدير فقط")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="تشغيل المحاكي متاح للمحرر ورئيس التحرير والمدير فقط",
+        )
 
 
 def _require_view(user: User) -> None:
     if user.role not in VIEW_ALLOWED:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="غير مصرح")
+
+
+def _assert_run_access(current_user: User, run) -> None:
+    if current_user.role in {UserRole.director, UserRole.editor_chief}:
+        return
+    if run.created_by_user_id == current_user.id or run.created_by_username == current_user.username:
+        return
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run غير موجود")
 
 
 @router.post("/run", response_model=SimRunResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -131,6 +142,7 @@ async def sim_run_status(
     row = await audience_simulation_service.get_run_status(db, run_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run غير موجود")
+    _assert_run_access(current_user, row)
     return SimRunStatusResponse(
         run_id=row.run_id,
         status=row.status,
@@ -147,6 +159,10 @@ async def sim_result(
     current_user: User = Depends(get_current_user),
 ):
     _require_view(current_user)
+    run = await audience_simulation_service.get_run_status(db, run_id)
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="النتيجة غير متاحة بعد")
+    _assert_run_access(current_user, run)
     result = await audience_simulation_service.get_result(db, run_id)
     if not result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="النتيجة غير متاحة بعد")
@@ -162,7 +178,14 @@ async def sim_history(
     current_user: User = Depends(get_current_user),
 ):
     _require_view(current_user)
-    rows = await audience_simulation_service.get_history(db, article_id=article_id, draft_id=draft_id, limit=limit)
+    owner_user_id = None if current_user.role in {UserRole.director, UserRole.editor_chief} else current_user.id
+    rows = await audience_simulation_service.get_history(
+        db,
+        article_id=article_id,
+        draft_id=draft_id,
+        limit=limit,
+        owner_user_id=owner_user_id,
+    )
     return SimHistoryResponse(items=[SimHistoryItem.model_validate(r) for r in rows], total=len(rows))
 
 
@@ -173,6 +196,11 @@ async def sim_live_events(
     current_user: User = Depends(get_current_user),
 ):
     _require_view(current_user)
+    async with async_session() as db:
+        run = await audience_simulation_service.get_run_status(db, run_id)
+        if not run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run غير موجود")
+        _assert_run_access(current_user, run)
 
     async def _stream():
         last_id = 0

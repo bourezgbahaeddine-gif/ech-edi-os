@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_secret_key: str = Field(..., min_length=32)
     app_port: int = 8000
+    sql_echo: bool = False
+    auth_cookie_name: str = "echorouk_access_token"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    allow_director_self_management: bool = False
 
     @property
     def secret_key(self) -> str:
@@ -233,6 +238,7 @@ class Settings(BaseSettings):
     quality_claim_require_non_aggregator_support: bool = False
     max_rss_sources: int = 300
     rss_fetch_timeout: int = 30
+    link_check_timeout_seconds: int = 7
     scout_batch_size: int = 8
     scout_concurrency: int = 8
     scout_max_new_per_run: int = 250

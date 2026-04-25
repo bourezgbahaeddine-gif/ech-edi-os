@@ -664,6 +664,57 @@ async def _latest_stage_report(
     return row.scalar_one_or_none()
 
 
+async def _latest_stage_reports_for_articles(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+    stages: list[str],
+) -> dict[int, dict[str, ArticleQualityReport]]:
+    if not article_ids or not stages:
+        return {}
+    rows = await db.execute(
+        select(ArticleQualityReport)
+        .where(
+            ArticleQualityReport.article_id.in_(article_ids),
+            ArticleQualityReport.stage.in_(stages),
+        )
+        .order_by(
+            ArticleQualityReport.article_id.asc(),
+            ArticleQualityReport.stage.asc(),
+            ArticleQualityReport.created_at.desc(),
+            ArticleQualityReport.id.desc(),
+        )
+    )
+    mapped: dict[int, dict[str, ArticleQualityReport]] = {}
+    for report in rows.scalars().all():
+        stage_bucket = mapped.setdefault(report.article_id, {})
+        stage_bucket.setdefault(report.stage, report)
+    return mapped
+
+
+async def _latest_drafts_for_articles(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+) -> dict[int, EditorialDraft]:
+    if not article_ids:
+        return {}
+    rows = await db.execute(
+        select(EditorialDraft)
+        .where(EditorialDraft.article_id.in_(article_ids))
+        .order_by(
+            EditorialDraft.article_id.asc(),
+            EditorialDraft.version.desc(),
+            EditorialDraft.updated_at.desc(),
+            EditorialDraft.id.desc(),
+        )
+    )
+    mapped: dict[int, EditorialDraft] = {}
+    for draft in rows.scalars().all():
+        mapped.setdefault(draft.article_id, draft)
+    return mapped
+
+
 STAGE_LABELS_AR = {
     "FACT_CHECK": "التحقق من الادعاءات",
     "QUALITY_SCORE": "تقييم الجودة",
@@ -897,11 +948,60 @@ async def _build_workspace_ready_package(
     }
 
 
-async def _get_latest_draft_or_404(db: AsyncSession, work_id: str) -> EditorialDraft:
+def _draft_actor_matches(draft: EditorialDraft, current_user: User) -> bool:
+    identifiers = {
+        str(current_user.username or "").strip().lower(),
+        str(current_user.full_name_ar or "").strip().lower(),
+    }
+    for value in (draft.created_by, draft.updated_by, draft.applied_by):
+        candidate = str(value or "").strip().lower()
+        if candidate and candidate in identifiers:
+            return True
+    return False
+
+
+def assert_draft_access(
+    draft: EditorialDraft,
+    current_user: User,
+    *,
+    action: Literal["read", "write", "approve", "admin"] = "read",
+) -> None:
+    role = current_user.role
+    if role == UserRole.director:
+        return
+    if role == UserRole.editor_chief:
+        return
+
+    owns_draft = _draft_actor_matches(draft, current_user)
+    readable_shared_statuses = {"applied", "archived"}
+
+    if role == UserRole.journalist:
+        if owns_draft:
+            return
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    if role in {UserRole.social_media, UserRole.print_editor}:
+        if action == "read" and (owns_draft or draft.status in readable_shared_statuses):
+            return
+        if action in {"write", "approve", "admin"} and owns_draft:
+            return
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    raise HTTPException(status_code=403, detail="Not authorized for this draft")
+
+
+async def _get_latest_draft_or_404(
+    db: AsyncSession,
+    work_id: str,
+    *,
+    current_user: User,
+    action: Literal["read", "write", "approve", "admin"] = "read",
+) -> EditorialDraft:
     row = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
     draft = row.scalar_one_or_none()
     if not draft:
         raise HTTPException(404, "Draft not found")
+    assert_draft_access(draft, current_user, action=action)
     return draft
 
 
@@ -1844,9 +1944,15 @@ async def social_approved_feed(
         .limit(max(1, min(limit, 200)))
     )
     articles = rows.scalars().all()
+    article_ids = [article.id for article in articles]
+    reports_by_article = await _latest_stage_reports_for_articles(
+        db,
+        article_ids=article_ids,
+        stages=["SOCIAL_VARIANTS"],
+    )
     out: list[dict[str, Any]] = []
     for article in articles:
-        social_report = await _latest_stage_report(db, article_id=article.id, stage="SOCIAL_VARIANTS")
+        social_report = reports_by_article.get(article.id, {}).get("SOCIAL_VARIANTS")
         variants = ((social_report.report_json or {}).get("variants") if social_report else {}) or {}
         out.append(
             {
@@ -2057,10 +2163,7 @@ async def workspace_draft_by_work_id(
         },
     )
 
-    result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    draft = result.scalar_one_or_none()
-    if not draft:
-        raise HTTPException(404, "Draft not found")
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return _draft_to_dict(draft)
 
 
@@ -2071,7 +2174,7 @@ async def workspace_draft_context(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
 
     article_row = await db.execute(select(Article).where(Article.id == draft.article_id))
     article = article_row.scalar_one_or_none()
@@ -2202,7 +2305,7 @@ async def workspace_draft_versions(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     rows = await db.execute(
         select(EditorialDraft)
         .where(EditorialDraft.work_id == work_id)
@@ -2254,7 +2357,7 @@ async def workspace_draft_autosave(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if payload.based_on_version != latest.version:
         raise HTTPException(409, f"Draft version conflict. current={latest.version}")
 
@@ -2279,7 +2382,7 @@ async def workspace_draft_restore(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     target_row = await db.execute(
         select(EditorialDraft).where(
             EditorialDraft.work_id == work_id,
@@ -2314,7 +2417,7 @@ async def workspace_ai_rewrite(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2337,7 +2440,7 @@ async def workspace_ai_inline(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     article_row = await db.execute(select(Article).where(Article.id == draft.article_id))
     article = article_row.scalar_one_or_none()
     source_text = ""
@@ -2362,7 +2465,7 @@ async def workspace_ai_proofread(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2385,7 +2488,7 @@ async def workspace_ai_headlines(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2406,7 +2509,7 @@ async def workspace_ai_seo(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2427,7 +2530,7 @@ async def workspace_ai_links_suggest(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2449,7 +2552,7 @@ async def workspace_ai_links_validate(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await link_intelligence_service.validate_run(db, payload.run_id)
 
 
@@ -2461,7 +2564,7 @@ async def workspace_ai_links_apply(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if payload.based_on_version != latest.version:
         raise HTTPException(409, f"Draft version conflict. current={latest.version}")
 
@@ -2500,7 +2603,7 @@ async def workspace_ai_links_history(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return {"work_id": work_id, "items": await link_intelligence_service.history(db, work_id, limit=max(1, min(limit, 30)))}
 
 
@@ -2512,7 +2615,7 @@ async def workspace_ai_social(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2533,7 +2636,7 @@ async def workspace_ai_apply(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2564,7 +2667,7 @@ async def workspace_verify_claims(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2589,7 +2692,7 @@ async def workspace_quality_score(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    await _get_latest_draft_or_404(db, work_id)
+    await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     return await _enqueue_editorial_ai_job(
         db=db,
         request=request,
@@ -2610,7 +2713,7 @@ async def workspace_publish_readiness(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return await _build_workspace_publish_readiness(db, latest=latest)
 
 
@@ -2621,7 +2724,7 @@ async def workspace_ready_package(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     return await _build_workspace_ready_package(db, latest=latest)
 
 
@@ -2633,7 +2736,7 @@ async def workspace_ai_orchestrator(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="read")
     article_row = await db.execute(select(Article).where(Article.id == latest.article_id))
     article = article_row.scalar_one_or_none()
     if not article:
@@ -2653,7 +2756,7 @@ async def workspace_ai_orchestrator_run(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, NEWSROOM_ROLES)
-    latest = await _get_latest_draft_or_404(db, work_id)
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     article_row = await db.execute(select(Article).where(Article.id == latest.article_id))
     article = article_row.scalar_one_or_none()
     if not article:
@@ -2755,7 +2858,7 @@ async def apply_draft_by_work_id(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, AUTHOR_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_for_chief_approval(
@@ -2781,7 +2884,7 @@ async def submit_draft_for_chief_approval(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, AUTHOR_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_for_chief_approval(
@@ -2807,7 +2910,7 @@ async def self_approve_workspace_draft(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, {UserRole.journalist})
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_for_chief_approval(
@@ -2831,7 +2934,7 @@ async def submit_draft_with_reservations(
     current_user: User = Depends(get_current_user),
 ):
     _require_roles(current_user, AUTHOR_ROLES)
-    draft = await _get_latest_draft_or_404(db, work_id)
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
     if draft.status not in {"draft", "applied"}:
         raise HTTPException(409, "Draft already archived")
     submission = await _submit_draft_with_reservations(
@@ -2866,19 +2969,21 @@ async def chief_pending_queue(
         .limit(max(1, min(limit, 500)))
     )
     articles = rows.scalars().all()
+    article_ids = [article.id for article in articles]
+    reports_by_article = await _latest_stage_reports_for_articles(
+        db,
+        article_ids=article_ids,
+        stages=["EDITORIAL_POLICY", "QUALITY_SCORE", "FACT_CHECK"],
+    )
+    drafts_by_article = await _latest_drafts_for_articles(db, article_ids=article_ids)
 
     out: list[dict[str, Any]] = []
     for article in articles:
-        policy_report = await _latest_stage_report(db, article_id=article.id, stage="EDITORIAL_POLICY")
-        quality_report = await _latest_stage_report(db, article_id=article.id, stage="QUALITY_SCORE")
-        fact_report = await _latest_stage_report(db, article_id=article.id, stage="FACT_CHECK")
-        latest_draft_row = await db.execute(
-            select(EditorialDraft)
-            .where(EditorialDraft.article_id == article.id)
-            .order_by(EditorialDraft.version.desc(), EditorialDraft.updated_at.desc(), EditorialDraft.id.desc())
-            .limit(1)
-        )
-        latest_draft = latest_draft_row.scalar_one_or_none()
+        article_reports = reports_by_article.get(article.id, {})
+        policy_report = article_reports.get("EDITORIAL_POLICY")
+        quality_report = article_reports.get("QUALITY_SCORE")
+        fact_report = article_reports.get("FACT_CHECK")
+        latest_draft = drafts_by_article.get(article.id)
         quality_score = int(quality_report.score) if quality_report and quality_report.score is not None else None
         claims_score = int(fact_report.score) if fact_report and fact_report.score is not None else None
         risk_level = "medium"
@@ -3049,10 +3154,7 @@ async def archive_draft_by_work_id(
         },
     )
 
-    draft_result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    draft = draft_result.scalar_one_or_none()
-    if not draft:
-        raise HTTPException(404, "Draft not found")
+    draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="admin")
     if draft.status == "archived":
         return {"work_id": work_id, "archived": True, "draft": _draft_to_dict(draft)}
 
@@ -3087,10 +3189,7 @@ async def regenerate_draft_by_work_id(
         },
     )
 
-    draft_result = await db.execute(_resolve_latest_draft_by_work_id_stmt(work_id))
-    latest = draft_result.scalar_one_or_none()
-    if not latest:
-        raise HTTPException(404, "Draft not found")
+    latest = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")
 
     article_result = await db.execute(select(Article).where(Article.id == latest.article_id))
     article = article_result.scalar_one_or_none()

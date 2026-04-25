@@ -115,6 +115,7 @@ class SocialTask(Base):
         CheckConstraint("channel IN ('news','tv')", name="ck_social_tasks_channel"),
         CheckConstraint("status IN ('todo','in_progress','review','done','cancelled')", name="ck_social_tasks_status"),
         CheckConstraint("priority >= 1 AND priority <= 5", name="ck_social_tasks_priority"),
+        Index("ix_social_tasks_created_by_user_id", "created_by_user_id"),
         Index("ix_social_tasks_status_due", "status", "due_at"),
         Index("ix_social_tasks_channel_status_due", "channel", "status", "due_at"),
         Index("ix_social_tasks_owner_status_due", "owner_user_id", "status", "due_at"),
@@ -147,6 +148,7 @@ class SocialPost(Base):
     __table_args__ = (
         CheckConstraint("channel IN ('news','tv')", name="ck_social_posts_channel"),
         CheckConstraint("status IN ('draft','ready','approved','scheduled','published','failed')", name="ck_social_posts_status"),
+        Index("ix_social_posts_created_by_user_id", "created_by_user_id"),
         Index("ix_social_posts_task_status", "task_id", "status"),
         Index("ix_social_posts_platform_status_scheduled", "platform", "status", "scheduled_at"),
     )

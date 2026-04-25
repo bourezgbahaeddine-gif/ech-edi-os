@@ -150,6 +150,8 @@ class Article(Base):
     editor_decisions = relationship("EditorDecision", back_populates="article", lazy="dynamic")
 
     __table_args__ = (
+        Index("ix_articles_source_id", "source_id"),
+        Index("ix_articles_published_at", "published_at"),
         Index("ix_articles_status_category", "status", "category"),
         Index("ix_articles_crawled", "crawled_at"),
         Index("ix_articles_importance", "importance_score"),
@@ -209,6 +211,7 @@ class EditorialDraft(Base):
     __table_args__ = (
         UniqueConstraint("article_id", "source_action", "version", name="uq_draft_article_action_version"),
         UniqueConstraint("work_id", "version", name="uq_draft_work_version"),
+        Index("ix_editorial_drafts_parent_draft_id", "parent_draft_id"),
         Index("ix_editorial_drafts_article_status", "article_id", "status"),
     )
 

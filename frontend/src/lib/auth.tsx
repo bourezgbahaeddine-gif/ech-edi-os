@@ -42,12 +42,11 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     token: null,
     isLoading: false,
-    login: (_user?: AuthUser, _token?: string | null) => undefined,
+    login: () => undefined,
     logout: () => undefined,
 });
 
 const PUBLIC_PATHS = ['/login'];
-const AUTH_TOKEN_KEY = 'echorouk_access_token';
 
 function getHomePathByRole(role: string): string {
     const normalized = (role || '').toLowerCase();
@@ -107,18 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const hydrate = async () => {
             try {
-                const storedToken = typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) : null;
-                if (storedToken) {
-                    applyAuthToken(storedToken);
-                }
                 const response = await api.get<AuthUser>('/auth/me');
                 if (cancelled) return;
-                dispatch({ type: 'hydrate', payload: { user: response.data, token: storedToken } });
+                dispatch({ type: 'hydrate', payload: { user: response.data, token: null } });
             } catch {
                 if (cancelled) return;
-                if (typeof window !== 'undefined') {
-                    localStorage.removeItem(AUTH_TOKEN_KEY);
-                }
                 applyAuthToken(null);
                 dispatch({ type: 'hydrate', payload: { user: null, token: null } });
             }
@@ -137,13 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!user) router.push('/login');
     }, [isLoading, pathname, router, user]);
 
-    const login = (newUser: AuthUser, _token: string | null = null) => {
-        const resolvedToken = _token || null;
-        if (typeof window !== 'undefined' && resolvedToken) {
-            localStorage.setItem(AUTH_TOKEN_KEY, resolvedToken);
-        }
-        applyAuthToken(resolvedToken);
-        dispatch({ type: 'login', payload: { user: newUser, token: resolvedToken } });
+    const login = (newUser: AuthUser) => {
+        applyAuthToken(null);
+        dispatch({ type: 'login', payload: { user: newUser, token: null } });
         router.push(getHomePathByRole(newUser.role));
     };
 
@@ -154,9 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // ignore network/logout errors
         }
 
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem(AUTH_TOKEN_KEY);
-        }
         applyAuthToken(null);
         dispatch({ type: 'logout' });
         router.push('/login');

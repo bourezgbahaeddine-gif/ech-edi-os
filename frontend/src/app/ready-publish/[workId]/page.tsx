@@ -7,6 +7,26 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, AlertTriangle, ArrowRight, Calendar, ExternalLink, FileText, Link2, Search, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { editorialApi, WorkspaceReadyPackage } from '@/lib/api';
+import { sanitizeArticleHtml } from '@/lib/sanitize-html';
+
+type ReportPayload = Record<string, unknown>;
+type ClaimItem = {
+    id?: string | number;
+    text?: string;
+    risk_level?: string;
+};
+type HeadlineCandidate = string | { headline?: string; title?: string };
+
+function asText(value: unknown, fallback = '?'): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    return fallback;
+}
+
+function asStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => asText(item, '')).filter(Boolean);
+}
 
 const STAGE_LABELS: Record<string, string> = {
     FACT_CHECK: 'التحقق من الادعاءات',
@@ -76,20 +96,22 @@ export default function ReadyPublishPage() {
     const socialReport = reports.SOCIAL_VARIANTS;
     const headlineReport = reports.HEADLINE_PACK;
 
-    const factPayload = (factReport?.report || {}) as Record<string, any>;
-    const claims = Array.isArray(factPayload.claims) ? factPayload.claims : [];
+    const factPayload = (factReport?.report || {}) as ReportPayload;
+    const claims = Array.isArray(factPayload.claims) ? (factPayload.claims as ClaimItem[]) : [];
 
-    const qualityPayload = (qualityReport?.report || {}) as Record<string, any>;
-    const readabilityPayload = (readabilityReport?.report || {}) as Record<string, any>;
-    const seoTechPayload = (seoTechReport?.report || {}) as Record<string, any>;
-    const seoPayloadWrapper = (seoSuggestionReport?.report || {}) as Record<string, any>;
-    const seoPayload = (seoPayloadWrapper.seo || seoPayloadWrapper) as Record<string, any>;
-    const socialPayloadWrapper = (socialReport?.report || {}) as Record<string, any>;
-    const socialVariants = (socialPayloadWrapper.variants || {}) as Record<string, any>;
-    const headlinePayloadWrapper = (headlineReport?.report || {}) as Record<string, any>;
+    const qualityPayload = (qualityReport?.report || {}) as ReportPayload;
+    const readabilityPayload = (readabilityReport?.report || {}) as ReportPayload;
+    const seoTechPayload = (seoTechReport?.report || {}) as ReportPayload;
+    const seoPayloadWrapper = (seoSuggestionReport?.report || {}) as ReportPayload;
+    const seoPayload = ((seoPayloadWrapper.seo as ReportPayload | undefined) || seoPayloadWrapper) as ReportPayload;
+    const socialPayloadWrapper = (socialReport?.report || {}) as ReportPayload;
+    const socialVariants = ((socialPayloadWrapper.variants as ReportPayload | undefined) || {}) as ReportPayload;
+    const headlinePayloadWrapper = (headlineReport?.report || {}) as ReportPayload;
     const headlinesRaw = headlinePayloadWrapper.headlines || [];
     const headlines = Array.isArray(headlinesRaw)
-        ? headlinesRaw.map((item: any) => (typeof item === 'string' ? item : String(item?.headline || item?.title || '')).trim()).filter(Boolean)
+        ? (headlinesRaw as HeadlineCandidate[])
+            .map((item) => (typeof item === 'string' ? item : String(item?.headline || item?.title || '')).trim())
+            .filter(Boolean)
         : [];
 
     const latestLinksRun = (data.links_history || [])[0];
@@ -188,7 +210,7 @@ export default function ReadyPublishPage() {
                     <h3 className="mt-4 text-xl font-bold text-white">{articleTitle}</h3>
                     <div
                         className="prose prose-invert mt-4 max-w-none prose-p:leading-8 prose-p:text-slate-200"
-                        dangerouslySetInnerHTML={{ __html: data.draft?.body || '' }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(data.draft?.body || '') }}
                     />
                 </div>
             </section>
@@ -205,7 +227,7 @@ export default function ReadyPublishPage() {
                         </span>
                     </div>
                     <p className="mt-3 text-xs text-slate-300">عدد الادعاءات: {claims.length || 0}</p>
-                    {claims.slice(0, 6).map((claim: any, idx: number) => (
+                    {claims.slice(0, 6).map((claim, idx: number) => (
                         <div key={`${claim?.id || idx}`} className="mt-2 rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-200">
                             <div className="flex items-center justify-between">
                                 <span>{claim?.text}</span>
@@ -226,10 +248,10 @@ export default function ReadyPublishPage() {
                             {qualityReport ? (qualityReport.passed ? 'ناجح' : 'غير مكتمل') : 'غير متاح'}
                         </span>
                     </div>
-                    <p className="mt-3 text-xs text-slate-300">النتيجة: {qualityReport?.score ?? qualityPayload.score ?? '?'}</p>
-                    {Array.isArray(qualityPayload?.actionable_fixes) && qualityPayload.actionable_fixes.length > 0 && (
+                    <p className="mt-3 text-xs text-slate-300">النتيجة: {asText(qualityReport?.score ?? qualityPayload.score)}</p>
+                    {asStringList(qualityPayload.actionable_fixes).length > 0 && (
                         <div className="mt-3 space-y-1 text-[11px] text-slate-200">
-                            {qualityPayload.actionable_fixes.slice(0, 4).map((fix: string, idx: number) => (
+                            {asStringList(qualityPayload.actionable_fixes).slice(0, 4).map((fix, idx: number) => (
                                 <div key={`${fix}-${idx}`}>? {fix}</div>
                             ))}
                         </div>
@@ -246,10 +268,10 @@ export default function ReadyPublishPage() {
                             {readabilityReport ? (readabilityReport.passed ? 'ناجح' : 'غير مكتمل') : 'غير متاح'}
                         </span>
                     </div>
-                    <p className="mt-3 text-xs text-slate-300">النتيجة: {readabilityReport?.score ?? readabilityPayload.score ?? '?'}</p>
-                    {Array.isArray(readabilityPayload?.actionable_fixes) && readabilityPayload.actionable_fixes.length > 0 && (
+                    <p className="mt-3 text-xs text-slate-300">النتيجة: {asText(readabilityReport?.score ?? readabilityPayload.score)}</p>
+                    {asStringList(readabilityPayload.actionable_fixes).length > 0 && (
                         <div className="mt-3 space-y-1 text-[11px] text-slate-200">
-                            {readabilityPayload.actionable_fixes.slice(0, 4).map((fix: string, idx: number) => (
+                            {asStringList(readabilityPayload.actionable_fixes).slice(0, 4).map((fix, idx: number) => (
                                 <div key={`${fix}-${idx}`}>? {fix}</div>
                             ))}
                         </div>
@@ -266,10 +288,10 @@ export default function ReadyPublishPage() {
                             {seoTechReport ? (seoTechReport.passed ? 'ناجح' : 'غير مكتمل') : 'غير متاح'}
                         </span>
                     </div>
-                    <p className="mt-3 text-xs text-slate-300">النتيجة: {seoTechReport?.score ?? seoTechPayload.score ?? '?'}</p>
-                    {Array.isArray(seoTechPayload?.actionable_fixes) && seoTechPayload.actionable_fixes.length > 0 && (
+                    <p className="mt-3 text-xs text-slate-300">النتيجة: {asText(seoTechReport?.score ?? seoTechPayload.score)}</p>
+                    {asStringList(seoTechPayload.actionable_fixes).length > 0 && (
                         <div className="mt-3 space-y-1 text-[11px] text-slate-200">
-                            {seoTechPayload.actionable_fixes.slice(0, 4).map((fix: string, idx: number) => (
+                            {asStringList(seoTechPayload.actionable_fixes).slice(0, 4).map((fix, idx: number) => (
                                 <div key={`${fix}-${idx}`}>? {fix}</div>
                             ))}
                         </div>
@@ -289,9 +311,9 @@ export default function ReadyPublishPage() {
                         </span>
                     </div>
                     <div className="mt-3 space-y-2 text-xs text-slate-300">
-                        <div>عنوان SEO: <span className="text-white">{seoPayload?.seo_title || '?'}</span></div>
-                        <div>الوصف: <span className="text-white">{seoPayload?.meta_description || '?'}</span></div>
-                        <div>الكلمة المفتاحية: <span className="text-white">{seoPayload?.focus_keyphrase || '?'}</span></div>
+                        <div>عنوان SEO: <span className="text-white">{asText(seoPayload.seo_title)}</span></div>
+                        <div>الوصف: <span className="text-white">{asText(seoPayload.meta_description)}</span></div>
+                        <div>الكلمة المفتاحية: <span className="text-white">{asText(seoPayload.focus_keyphrase)}</span></div>
                     </div>
                 </div>
 

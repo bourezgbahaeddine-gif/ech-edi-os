@@ -5,6 +5,7 @@ Internal + external link indexing, recommendation, validation, and HTML apply he
 
 from __future__ import annotations
 
+import asyncio
 import math
 import re
 import xml.etree.ElementTree as ET
@@ -20,6 +21,7 @@ from urllib.request import Request, urlopen
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models import (
     Article,
@@ -32,6 +34,7 @@ from app.models import (
 from app.models.user import User
 
 logger = get_logger("link_intelligence.service")
+settings = get_settings()
 
 
 LINK_MODES = {"internal", "external", "mixed"}
@@ -225,11 +228,15 @@ class LinkIntelligenceService:
         return max(0.0, min(1.0, math.exp(-age_hours / 220.0)))
 
     @staticmethod
-    def _fetch_text(url: str, timeout: int = 10) -> str:
+    def _fetch_text(url: str, timeout: int | None = None) -> str:
+        timeout = timeout or settings.link_check_timeout_seconds
         req = Request(url, headers={"User-Agent": "Mozilla/5.0 (LinkIntelligenceBot)"})
         with urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
         return raw.decode("utf-8", "ignore")
+
+    async def _fetch_text_async(self, url: str, timeout: int | None = None) -> str:
+        return await asyncio.to_thread(self._fetch_text, url, timeout)
 
     @staticmethod
     def _slug_to_title(url: str) -> str:
@@ -266,7 +273,8 @@ class LinkIntelligenceService:
         items = rows.scalars().all()
         return {self._normalize_domain(x.domain): x for x in items}
 
-    def _resolve_final_url(self, url: str, timeout: int = 5) -> str:
+    def _resolve_final_url(self, url: str, timeout: int | None = None) -> str:
+        timeout = timeout or settings.link_check_timeout_seconds
         canon = self._canonical_url(url)
         if not canon:
             return ""
@@ -287,6 +295,9 @@ class LinkIntelligenceService:
                 final = canon
         self._resolve_cache[canon] = (final, now)
         return final
+
+    async def _resolve_final_url_async(self, url: str, timeout: int | None = None) -> str:
+        return await asyncio.to_thread(self._resolve_final_url, url, timeout)
 
     async def sync_index_from_articles(
         self,
@@ -339,7 +350,7 @@ class LinkIntelligenceService:
                 if domain in AGGREGATOR_DOMAINS and (trusted_domain or source_domain):
                     resolved_url = ""
                     if aggregator_resolved < max_aggregator_resolve:
-                        resolved_url = self._resolve_final_url(url)
+                        resolved_url = await self._resolve_final_url_async(url)
                     resolved_domain = self._extract_domain(resolved_url) if resolved_url else ""
                     if resolved_domain in trusted:
                         url = resolved_url
@@ -500,7 +511,7 @@ class LinkIntelligenceService:
             upserted += 1
 
         try:
-            feed_xml = self._fetch_text(ECHOROUK_FEED_URL, timeout=12)
+            feed_xml = await self._fetch_text_async(ECHOROUK_FEED_URL, timeout=12)
             root = ET.fromstring(feed_xml)
             channel = root.find("channel")
             if channel is not None:
@@ -523,7 +534,7 @@ class LinkIntelligenceService:
             logger.warning("link_index_feed_sync_failed", error=str(exc))
 
         try:
-            news_sitemap_xml = self._fetch_text(ECHOROUK_NEWS_SITEMAP_URL, timeout=12)
+            news_sitemap_xml = await self._fetch_text_async(ECHOROUK_NEWS_SITEMAP_URL, timeout=12)
             root = ET.fromstring(news_sitemap_xml)
             ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9", "news": "http://www.google.com/schemas/sitemap-news/0.9"}
             for node in root.findall("sm:url", ns)[:260]:
@@ -1096,8 +1107,16 @@ class LinkIntelligenceService:
 
         alive = 0
         dead = 0
-        for item in items:
-            status_code, ok = self._check_url(item.url)
+        checks = await asyncio.gather(
+            *(self._check_url_async(item.url) for item in items),
+            return_exceptions=True,
+        )
+        for item, check in zip(items, checks, strict=False):
+            if isinstance(check, Exception):
+                logger.warning("link_check_failed", url=item.url, error_type=type(check).__name__)
+                status_code, ok = 0, False
+            else:
+                status_code, ok = check
             meta = dict(item.metadata_json or {})
             meta["http_status"] = status_code
             meta["reachable"] = ok
@@ -1111,20 +1130,24 @@ class LinkIntelligenceService:
         return {"run_id": run_id, "checked": len(items), "alive": alive, "dead": dead}
 
     @staticmethod
-    def _check_url(url: str) -> tuple[int, bool]:
+    def _check_url(url: str, timeout: int | None = None) -> tuple[int, bool]:
+        timeout = timeout or settings.link_check_timeout_seconds
         try:
             req = Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
-            with urlopen(req, timeout=7) as resp:
+            with urlopen(req, timeout=timeout) as resp:
                 code = int(getattr(resp, "status", 200) or 200)
                 return code, 200 <= code < 400
         except Exception:
             try:
                 req = Request(url, method="GET", headers={"User-Agent": "Mozilla/5.0"})
-                with urlopen(req, timeout=7) as resp:
+                with urlopen(req, timeout=timeout) as resp:
                     code = int(getattr(resp, "status", 200) or 200)
                     return code, 200 <= code < 400
             except Exception:
                 return 0, False
+
+    async def _check_url_async(self, url: str, timeout: int | None = None) -> tuple[int, bool]:
+        return await asyncio.to_thread(self._check_url, url, timeout)
 
     async def get_run_items(self, db: AsyncSession, run_id: str, item_ids: list[int] | None = None) -> list[LinkRecommendationItem]:
         stmt = select(LinkRecommendationItem).where(
@@ -1152,15 +1175,24 @@ class LinkIntelligenceService:
             .limit(limit)
         )
         runs = runs_rows.scalars().all()
+        if not runs:
+            return []
+
+        run_ids = [run.run_id for run in runs]
+        items_rows = await db.execute(
+            select(LinkRecommendationItem)
+            .where(LinkRecommendationItem.run_id.in_(run_ids))
+            .order_by(LinkRecommendationItem.run_id.asc(), desc(LinkRecommendationItem.score))
+        )
+        items_by_run: dict[str, list[LinkRecommendationItem]] = {}
+        for item in items_rows.scalars().all():
+            bucket = items_by_run.setdefault(item.run_id, [])
+            if len(bucket) < 20:
+                bucket.append(item)
+
         out: list[dict[str, Any]] = []
         for run in runs:
-            items_rows = await db.execute(
-                select(LinkRecommendationItem)
-                .where(LinkRecommendationItem.run_id == run.run_id)
-                .order_by(desc(LinkRecommendationItem.score))
-                .limit(20)
-            )
-            items = items_rows.scalars().all()
+            items = items_by_run.get(run.run_id, [])
             out.append(
                 {
                     "run_id": run.run_id,
@@ -1235,4 +1267,3 @@ class LinkIntelligenceService:
 
 
 link_intelligence_service = LinkIntelligenceService()
-

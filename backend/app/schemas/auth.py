@@ -19,7 +19,7 @@ class LoginRequest(StrictRequestModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: "UserProfile"
 

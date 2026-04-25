@@ -67,7 +67,8 @@ class CacheService:
             return False
         try:
             return await client.exists(f"url:{url_hash}") > 0
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_url_lookup_error", error=str(e))
             return False
 
     async def mark_url_processed(self, url_hash: str, article_id: int = 0):
@@ -94,7 +95,8 @@ class CacheService:
         try:
             titles = await client.lrange("recent_titles", 0, limit - 1)
             return titles
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_recent_titles_error", error=str(e))
             return []
 
     async def add_recent_title(self, title: str):
@@ -117,7 +119,8 @@ class CacheService:
             return None
         try:
             return await client.get(key)
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_get_error", key=key, error=str(e))
             return None
 
     async def set(self, key: str, value: str, ttl: timedelta = None):
@@ -169,7 +172,8 @@ class CacheService:
             # Auto-expire counters daily
             await client.expire(f"counter:{key}", 86400)
             return count
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_counter_increment_error", key=key, error=str(e))
             return 0
 
     async def get_counter(self, key: str) -> int:
@@ -180,7 +184,8 @@ class CacheService:
         try:
             val = await client.get(f"counter:{key}")
             return int(val) if val else 0
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_counter_get_error", key=key, error=str(e))
             return 0
 
     async def list_counters(self, prefix: str, limit: int = 200) -> dict[str, int]:
@@ -200,7 +205,8 @@ class CacheService:
                     result[normalized_key] = int(value or 0)
                 except (TypeError, ValueError):
                     result[normalized_key] = 0
-        except Exception:
+        except Exception as e:
+            logger.warning("cache_counter_list_error", prefix=prefix, error=str(e))
             return {}
         return result
 

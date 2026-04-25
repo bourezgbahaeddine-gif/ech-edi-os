@@ -1,10 +1,6 @@
-name: echorouk_editorial_os
 
 services:
   backend:
-    # Recommended production limits via compose override or orchestrator:
-    # mem_limit: 2g
-    # cpus: 1.50
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -34,9 +30,6 @@ services:
       - ech-network
 
   worker:
-    # Recommended production limits via compose override or orchestrator:
-    # mem_limit: 4g
-    # cpus: 2.00
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -125,7 +118,7 @@ services:
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./scripts/seed_sources.sql:/docker-entrypoint-initdb.d/02-seed-sources.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echorouk} -d ${POSTGRES_DB:-echorouk_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echorouk}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -153,15 +146,15 @@ services:
       - ech-network
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:latest
     container_name: ech-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -193,7 +186,7 @@ services:
       - ech-network
 
   freshrss:
-    image: freshrss/freshrss:1.28.1
+    image: freshrss/freshrss:latest
     container_name: ech-freshrss
     depends_on:
       freshrss-db:
@@ -219,9 +212,9 @@ services:
         --password=${FRESHRSS_ADMIN_PASSWORD?FRESHRSS_ADMIN_PASSWORD is required}
         --user=${FRESHRSS_ADMIN_USER:-admin}
     ports:
-      - "127.0.0.1:8082:80"
+      - "8082:80"
     healthcheck:
-      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1/i/')===false?1:0);\""]
+      test: ["CMD", "curl", "-f", "http://localhost/i/"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -234,12 +227,12 @@ services:
       - ech-network
 
   rssbridge:
-    image: rssbridge/rss-bridge:sha-b8f3e32
+    image: rssbridge/rss-bridge:latest
     container_name: ech-rssbridge
     ports:
-      - "127.0.0.1:8083:80"
+      - "8083:80"
     healthcheck:
-      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1/')===false?1:0);\""]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 15s
       timeout: 10s
       retries: 5

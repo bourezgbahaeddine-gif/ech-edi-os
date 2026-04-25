@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.logging import get_logger
+from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -38,11 +39,51 @@ from app.services.cache_service import cache_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger("auth")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
+settings = get_settings()
 
 _LOGIN_RATE_PREFIX = "login_rate:"
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def _cookie_secure() -> bool:
+    return bool(settings.auth_cookie_secure or settings.app_env.lower() == "production")
+
+
+def _cookie_samesite() -> str:
+    value = str(settings.auth_cookie_samesite or "lax").strip().lower()
+    return value if value in {"lax", "strict", "none"} else "lax"
+
+
+def _set_access_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=token,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
+        max_age=60 * 60 * 12,
+        path="/",
+    )
+
+
+def _clear_access_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.auth_cookie_name,
+        path="/",
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
+    )
+
+
+def _extract_access_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
+) -> str | None:
+    if credentials and credentials.credentials:
+        return credentials.credentials
+    return request.cookies.get(settings.auth_cookie_name)
 
 
 async def _check_login_rate(username: str) -> None:
@@ -76,6 +117,30 @@ def _require_manager_view(user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="غير مصرح. المتاح للمدير فقط",
         )
+
+
+async def _assert_director_role_assignment_allowed(
+    *,
+    db: AsyncSession,
+    actor: User,
+    target: User | None,
+    requested_role: UserRole,
+    action: str,
+) -> None:
+    if requested_role != UserRole.director or settings.allow_director_self_management:
+        return
+
+    await _log_activity(
+        db,
+        action=f"{action}_blocked_director_role",
+        actor=actor,
+        target=target,
+        details={"requested_role": requested_role.value},
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨Ø§Øª Ù…Ø¯ÙŠØ± Ø£Ùˆ Ø§Ù„ØªØ±Ù‚ÙŠØ© Ø¥Ù„Ù‰ Ù…Ø¯ÙŠØ± Ù…Ø¹Ø·Ù„Ø© Ø§ÙØªØ±Ø§Ø¶ÙŠÙ‹Ø§",
+    )
 
 
 def _normalize_departments(values: list[str]) -> list[str]:
@@ -138,10 +203,18 @@ async def _active_directors_count(db: AsyncSession) -> int:
 
 # -- Dependency: current user --
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    payload = decode_access_token(credentials.credentials)
+    token = _extract_access_token(request, credentials)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ø±Ù…Ø² Ø§Ù„Ù…ØµØ§Ø¯Ù‚Ø© ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ù…Ù†ØªÙ‡ÙŠ Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ©",
+        )
+
+    payload = decode_access_token(token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -167,7 +240,11 @@ async def get_current_user(
 
 # -- Login --
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(
+    request: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     await _check_login_rate(request.username)
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
@@ -209,8 +286,9 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         }
     )
 
+    _set_access_cookie(response, token)
     logger.info("login_success", username=user.username, role=user.role.value)
-    return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
+    return TokenResponse(access_token=None, user=UserProfile.model_validate(user))
 
 
 # -- Current user --
@@ -222,6 +300,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
 # -- Logout --
 @router.post("/logout")
 async def logout(
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -235,6 +314,7 @@ async def logout(
         target=current_user,
     )
     await db.commit()
+    _clear_access_cookie(response)
     logger.info("logout", username=current_user.username)
     return {"message": "تم تسجيل الخروج بنجاح"}
 
@@ -259,6 +339,13 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ):
     _require_director(current_user)
+    await _assert_director_role_assignment_allowed(
+        db=db,
+        actor=current_user,
+        target=None,
+        requested_role=payload.role,
+        action="membership_create_user",
+    )
     departments = _normalize_departments(payload.departments)
 
     user = User(
@@ -339,6 +426,13 @@ async def update_user(
 
     if "role" in data and data["role"] is not None:
         next_role = data["role"]
+        await _assert_director_role_assignment_allowed(
+            db=db,
+            actor=current_user,
+            target=target_user,
+            requested_role=next_role,
+            action="membership_update_user",
+        )
         if (
             target_user.role == UserRole.director
             and next_role != UserRole.director

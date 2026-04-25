@@ -257,7 +257,8 @@ async def test_setting(
                     payload = await resp.json()
                     return {"ok": bool(payload.get("items"))}
         except Exception as exc:
-            return {"ok": False, "error": str(exc)}
+            logger.warning("settings_test_failed", key=key, error_type=type(exc).__name__)
+            return {"ok": False, "error": "Connectivity test failed"}
     if key == "GOOGLE_FACT_CHECK_API_KEY":
         api_key = await settings_service.get_value("GOOGLE_FACT_CHECK_API_KEY", settings.google_fact_check_api_key or "")
         if not api_key:
@@ -277,9 +278,8 @@ async def test_setting(
                     payload = await resp.json()
                     return {"ok": "claims" in payload}
         except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": str(exc)}
+            logger.warning("settings_test_failed", key=key, error_type=type(exc).__name__)
+            return {"ok": False, "error": "Connectivity test failed"}
     if key == "YOUTUBE_TRENDS_ENABLED":
         enabled = await settings_service.get_value("YOUTUBE_TRENDS_ENABLED", str(settings.youtube_trends_enabled).lower())
         return {"ok": str(enabled).strip().lower() in {"1", "true", "yes", "on"}}

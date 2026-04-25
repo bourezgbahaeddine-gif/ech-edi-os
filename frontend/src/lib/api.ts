@@ -2762,7 +2762,7 @@ export interface UpdateUserPayload {
 
 export const authApi = {
     login: (username: string, password: string) =>
-        api.post<{ access_token: string; token_type: string; user: TeamMember }>('/auth/login', { username, password }),
+        api.post<{ access_token?: string | null; token_type: string; user: TeamMember }>('/auth/login', { username, password }),
     me: () => api.get<TeamMember>('/auth/me'),
     logout: () => api.post('/auth/logout'),
     users: () => api.get<TeamMember[]>('/auth/users'),

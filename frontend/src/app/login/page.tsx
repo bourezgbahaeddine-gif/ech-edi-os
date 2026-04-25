@@ -25,7 +25,7 @@ export default function LoginPage() {
             const response = await api.post('/auth/login', { username, password });
             const { user } = response.data;
 
-            login(user, response.data.access_token);
+            login(user);
 
         } catch (err: unknown) {
             const detail = axios.isAxiosError(err)
@@ -167,4 +167,3 @@ export default function LoginPage() {
         </div>
     );
 }
-

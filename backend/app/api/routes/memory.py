@@ -68,6 +68,17 @@ def _assert_manage(user: User) -> None:
         raise HTTPException(status_code=403, detail="غير مسموح لك بإدارة حالة ذاكرة المشروع.")
 
 
+def _assert_item_write_access(user: User, item: ProjectMemoryItem) -> None:
+    # Project memory is collaborative for reading, but low-privilege users
+    # should only mutate items they created. Editorial management keeps
+    # override access for newsroom coordination.
+    if user.role in MANAGE_ROLES:
+        return
+    if item.created_by_user_id == user.id:
+        return
+    raise HTTPException(status_code=403, detail="غير مسموح لك بتعديل عنصر ذاكرة لم تقم بإنشائه.")
+
+
 async def _ensure_memory_tables(db: AsyncSession) -> None:
     checks = await db.execute(
         text(
@@ -194,6 +205,7 @@ async def update_item(
     item = row.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="عنصر الذاكرة غير موجود.")
+    _assert_item_write_access(current_user, item)
 
     data = payload.model_dump(exclude_unset=True)
     if not data:
