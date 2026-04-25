@@ -1050,16 +1050,7 @@ async def _submit_draft_for_chief_approval(
         raise HTTPException(404, "Article not found")
 
     preflight_blockers: list[str] = []
-    if force_direct_publish:
-        try:
-            await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
-        except HTTPException as exc:
-            if exc.status_code == 412 and isinstance(exc.detail, dict):
-                preflight_blockers = list(exc.detail.get("blocking_reasons") or [])
-            else:
-                raise
-    else:
-        await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
+    await _assert_publish_gate_and_constitution(db, article_id=article.id, user=current_user)
 
     if draft.title:
         article.title_ar = draft.title
@@ -1108,7 +1099,7 @@ async def _submit_draft_for_chief_approval(
     gate_summary = quality_gate_service.summarize_gate_result(gate_result)
 
     decision = policy_report.get("decision", "reservations")
-    if not gate_result.passed and not force_direct_publish:
+    if not gate_result.passed:
         decision = "reservations"
 
     blockers = list(dict.fromkeys(preflight_blockers + [issue.message for issue in gate_result.blockers]))
@@ -1124,13 +1115,15 @@ async def _submit_draft_for_chief_approval(
     if force_direct_publish:
         if not journalist_direct_path:
             raise HTTPException(status_code=403, detail="المسار المباشر متاح للصحفي فقط.")
-        target_status = NewsStatus.READY_FOR_MANUAL_PUBLISH
-        transition_action = "journalist_self_approval"
-        status_message = "تم الاعتماد الذاتي من الصحفي. ملاحظات الجودة تبقى استرشادية."
+        target_status = NewsStatus.READY_FOR_CHIEF_APPROVAL
+        transition_action = "self_approve_submit_for_chief"
+        submitted_for_chief_approval = True
+        status_message = "تم استلام طلب الاعتماد المباشر، لكن النسخة ستتجه إلى رئيس التحرير وفق ضوابط الحوكمة."
     elif decision == "approved" and journalist_direct_path and settings.editorial_direct_publish_enabled and not is_sensitive:
-        target_status = NewsStatus.READY_FOR_MANUAL_PUBLISH
-        status_message = "تم اعتماد النسخة من الصحفي وأصبحت جاهزة للنشر اليدوي."
-        transition_action = "journalist_direct_approval"
+        target_status = NewsStatus.READY_FOR_CHIEF_APPROVAL
+        status_message = "اجتازت النسخة البوابات المطلوبة، وتم تحويلها إلى رئيس التحرير لاعتمادها النهائي."
+        transition_action = "journalist_direct_submit_for_chief"
+        submitted_for_chief_approval = True
     elif decision == "approved":
         target_status = NewsStatus.READY_FOR_CHIEF_APPROVAL
         status_message = "جاهز لاعتماد رئيس التحرير"
@@ -1170,11 +1163,11 @@ async def _submit_draft_for_chief_approval(
     draft.applied_by = current_user.full_name_ar
     draft.applied_at = datetime.utcnow()
     draft.updated_by = current_user.full_name_ar
-    draft_audit_action = "draft_submit_for_chief" if submitted_for_chief_approval else "draft_submit_direct_publish_flow"
+    draft_audit_action = "draft_submit_for_chief" if submitted_for_chief_approval else "draft_revision_required"
     decision_action = (
         "process:submit_for_chief_approval"
         if submitted_for_chief_approval
-        else "process:submit_for_manual_publish"
+        else "process:revision_required"
     )
     await audit_service.log_action(
         db,
@@ -1404,6 +1397,33 @@ async def _assert_publish_gate_and_constitution(
         )
 
 
+async def assert_article_can_enter_approved_handoff(
+    db: AsyncSession,
+    article: Article,
+    current_user: User,
+    *,
+    source: str,
+) -> None:
+    policy_report_row = await _latest_stage_report(db, article_id=article.id, stage="EDITORIAL_POLICY")
+    policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
+    gate_result = await quality_gate_service.run_submission_quality_gates(
+        db,
+        article_id=article.id,
+        policy_report=policy_payload,
+    )
+    if gate_result.passed:
+        return
+
+    raise HTTPException(
+        status_code=412,
+        detail={
+            "message": "لا يمكن تحويل الخبر إلى مرحلة التسليم قبل تجاوز بوابة الجودة.",
+            "blocking_reasons": [issue.message for issue in gate_result.blockers],
+            "source": source,
+        },
+    )
+
+
 @router.post("/{article_id}/decide", response_model=EditorDecisionResponse)
 async def make_decision(
     article_id: int,
@@ -1460,21 +1480,12 @@ async def make_decision(
         raise HTTPException(status_code=422, detail="reason is required when decision=reject")
 
     if data.decision == "approve":
-        policy_report_row = await _latest_stage_report(db, article_id=article_id, stage="EDITORIAL_POLICY")
-        policy_payload = (policy_report_row.report_json or {}) if policy_report_row else None
-        gate_result = await quality_gate_service.run_submission_quality_gates(
+        await assert_article_can_enter_approved_handoff(
             db,
-            article_id=article_id,
-            policy_report=policy_payload,
+            article,
+            current_user,
+            source="editorial_decision_approve",
         )
-        if not gate_result.passed:
-            raise HTTPException(
-                status_code=412,
-                detail={
-                    "message": "لا يمكن تحويل الخبر إلى مرحلة التسليم قبل تجاوز بوابة الجودة.",
-                    "blocking_reasons": [issue.message for issue in gate_result.blockers],
-                },
-            )
         await _transition_article_status(
             db=db,
             article=article,
@@ -1553,6 +1564,12 @@ async def handoff_to_scribe(
         raise HTTPException(400, f"لا يمكن إنشاء مسودة لهذا الخبر في الحالة الحالية: {current_status}")
 
     if article.status in [NewsStatus.CANDIDATE, NewsStatus.CLASSIFIED, NewsStatus.REJECTED]:
+        await assert_article_can_enter_approved_handoff(
+            db,
+            article,
+            current_user,
+            source="handoff_to_scribe",
+        )
         was_rejected = article.status == NewsStatus.REJECTED
         await _transition_article_status(
             db=db,
@@ -1709,6 +1726,12 @@ async def process_article(
     if payload.action in {"publish_now", "unpublish"}:
         _require_roles(current_user, {UserRole.director, UserRole.editor_chief, UserRole.journalist})
         if payload.action == "publish_now":
+            if article.status != NewsStatus.READY_FOR_MANUAL_PUBLISH:
+                current_status = article.status.value if article.status else "unknown"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Article must be in ready_for_manual_publish before publish_now (current: {current_status})",
+                )
             fact_report = await _latest_stage_report(db, article_id=article_id, stage="FACT_CHECK")
             if not fact_report or not bool(fact_report.passed):
                 raise HTTPException(
@@ -1740,16 +1763,6 @@ async def process_article(
                         "blocking_reasons": audit.get("blocking_reasons", []),
                         "actionable_fixes": audit.get("actionable_fixes", []),
                     },
-                )
-            if article.status != NewsStatus.READY_FOR_MANUAL_PUBLISH:
-                await _transition_article_status(
-                    db=db,
-                    article=article,
-                    target_status=NewsStatus.READY_FOR_MANUAL_PUBLISH,
-                    actor=current_user,
-                    action="process_publish_ready",
-                    reason=f"{current_user.role.value}_override",
-                    details={"article_id": article_id},
                 )
             await _transition_article_status(
                 db=db,
@@ -2872,7 +2885,7 @@ async def apply_draft_by_work_id(
         "message": (
             "تم إرسال النسخة إلى رئيس التحرير بعد فحص وكيل السياسة."
             if submission.get("submitted_for_chief_approval")
-            else "تم اعتماد النسخة داخل المسار المباشر بدون تصعيد لرئيس التحرير."
+            else "النسخة ما زالت تحتاج معالجة ملاحظات الجودة قبل رفعها إلى رئيس التحرير."
         ),
     }
 
@@ -2898,7 +2911,7 @@ async def submit_draft_for_chief_approval(
         "message": (
             "تم إرسال النسخة إلى رئيس التحرير بعد فحص وكيل السياسة."
             if submission.get("submitted_for_chief_approval")
-            else "تم اعتماد النسخة داخل المسار المباشر بدون تصعيد لرئيس التحرير."
+            else "النسخة ما زالت تحتاج معالجة ملاحظات الجودة قبل رفعها إلى رئيس التحرير."
         ),
     }
 
@@ -2917,12 +2930,11 @@ async def self_approve_workspace_draft(
         db=db,
         draft=draft,
         current_user=current_user,
-        force_direct_publish=True,
     )
     return {
         **submission,
-        "submitted_for_chief_approval": False,
-        "message": "تم الاعتماد المباشر من الصحفي. التقييمات المعروضة هي ملاحظات مساعدة فقط.",
+        "submitted_for_chief_approval": bool(submission.get("submitted_for_chief_approval", False)),
+        "message": "تم إرسال النسخة إلى رئيس التحرير. الاعتماد النهائي لا يتم ذاتيًا ضمن ضوابط الحوكمة.",
     }
 
 
@@ -3197,6 +3209,13 @@ async def regenerate_draft_by_work_id(
         raise HTTPException(404, "Article not found")
 
     if article.status not in [NewsStatus.APPROVED, NewsStatus.APPROVED_HANDOFF, NewsStatus.DRAFT_GENERATED]:
+        if article.status in {NewsStatus.CANDIDATE, NewsStatus.CLASSIFIED, NewsStatus.REJECTED}:
+            await assert_article_can_enter_approved_handoff(
+                db,
+                article,
+                current_user,
+                source="regenerate_draft",
+            )
         await _transition_article_status(
             db=db,
             article=article,
