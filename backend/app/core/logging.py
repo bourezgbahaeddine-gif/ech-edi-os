@@ -67,8 +67,10 @@ def redact_headers(headers: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def redact_sensitive_data(event_dict: dict[str, Any]) -> dict[str, Any]:
-    """Processor to redact sensitive data from log events."""
+def redact_sensitive_data(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Structlog processor that redacts sensitive data from log events."""
     # Redact any 'headers' field
     if 'headers' in event_dict:
         event_dict['headers'] = redact_headers(event_dict['headers'])
@@ -112,4 +114,3 @@ def setup_logging(debug: bool = False):
 def get_logger(name: str = None):
     """Get a structured logger instance."""
     return structlog.get_logger(name)
-

@@ -133,6 +133,16 @@ class CacheService:
         except Exception as e:
             logger.warning("cache_set_error", error=str(e))
 
+    async def delete(self, key: str) -> None:
+        """Delete a value from cache."""
+        client = await self._ensure_client()
+        if not client:
+            return
+        try:
+            await client.delete(key)
+        except Exception as e:
+            logger.warning("cache_delete_error", error=str(e))
+
     async def get_json(self, key: str) -> Optional[dict]:
         """Get a JSON value from cache."""
         raw = await self.get(key)
