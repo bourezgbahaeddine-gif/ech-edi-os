@@ -30,7 +30,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
 function AppShellChrome({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const { user } = useAuth();
+    const { user, isLoading } = useAuth();
     const { mode } = useUxShellMode();
     const chromeHidden = mode === 'focus' || mode === 'emergency' || mode === 'deep_work';
     const queryClient = useQueryClient();
@@ -102,6 +102,17 @@ function AppShellChrome({ children }: { children: React.ReactNode }) {
         if (!version) return;
         ackMutation.mutate(version);
     };
+
+    if (isLoading) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-[#020817] text-slate-200" dir="rtl">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center">
+                    <div className="text-sm font-medium text-cyan-300">Echorouk Editorial OS</div>
+                    <div className="mt-2 text-base">جاري التحقق من الجلسة...</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={cn('flex overflow-x-hidden app-theme-shell', chromeHidden && 'bg-[#020817]')}>

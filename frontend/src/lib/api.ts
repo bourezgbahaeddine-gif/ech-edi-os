@@ -3323,8 +3323,16 @@ api.interceptors.response.use(
             };
         }
 
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
-            window.location.href = '/login';
+        const requestUrl = String(error?.config?.url || '');
+        const isAuthBootstrapRequest = requestUrl.includes('/auth/me');
+
+        if (
+            error.response?.status === 401 &&
+            typeof window !== 'undefined' &&
+            !isAuthBootstrapRequest &&
+            window.location.pathname !== '/login'
+        ) {
+            window.location.replace('/login');
         }
         return Promise.reject(error);
     }
