@@ -1469,6 +1469,17 @@ async def make_decision(
     if article.status not in [NewsStatus.CANDIDATE, NewsStatus.CLASSIFIED, NewsStatus.APPROVED_HANDOFF]:
         raise HTTPException(400, f"Article cannot be reviewed in state: {article.status}")
 
+    if data.decision == "reject" and not (data.reason or "").strip():
+        raise HTTPException(status_code=422, detail="reason is required when decision=reject")
+
+    if data.decision == "approve":
+        await assert_article_can_enter_approved_handoff(
+            db,
+            article,
+            current_user,
+            source="editorial_decision_approve",
+        )
+
     editor_name = current_user.full_name_ar
     decision = EditorDecision(
         article_id=article_id,
@@ -1504,16 +1515,7 @@ async def make_decision(
             )
         )
 
-    if data.decision == "reject" and not (data.reason or "").strip():
-        raise HTTPException(status_code=422, detail="reason is required when decision=reject")
-
     if data.decision == "approve":
-        await assert_article_can_enter_approved_handoff(
-            db,
-            article,
-            current_user,
-            source="editorial_decision_approve",
-        )
         await _transition_article_status(
             db=db,
             article=article,

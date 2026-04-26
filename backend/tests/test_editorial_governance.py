@@ -158,6 +158,34 @@ async def test_make_decision_approve_returns_gate_blockers(monkeypatch):
     assert exc_info.value.detail["code"] == "quality_gate_blocked"
     assert exc_info.value.detail["blockers"] == ["fact blocker"]
     assert article.status == NewsStatus.CANDIDATE
+    assert db.added == []
+    assert db.committed is False
+
+
+@pytest.mark.asyncio
+async def test_make_decision_reject_requires_reason_before_side_effects():
+    article = _article(NewsStatus.CANDIDATE)
+    db = _DbStub(article)
+
+    payload = SimpleNamespace(
+        decision="reject",
+        reason="   ",
+        edited_title="Edited",
+        edited_body="<p>Edited</p>",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await editorial_route.make_decision(
+            article_id=101,
+            data=payload,
+            db=db,
+            current_user=_chief(),
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "reason is required when decision=reject"
+    assert db.added == []
+    assert db.committed is False
 
 
 @pytest.mark.asyncio
