@@ -2887,6 +2887,8 @@ function WorkspaceDraftsPageContent() {
                     <div className="space-y-2 text-xs text-gray-200">
                         <InfoBlock label="فيسبوك" value={social.facebook} />
                         <InfoBlock label="X" value={social.x} />
+                        <InfoBlock label="Instagram" value={social.instagram} />
+                        <InfoBlock label="TikTok" value={social.tiktok || social.tiktok_hook_3s} />
                         <InfoBlock label="Push" value={social.push} />
                         <InfoBlock label="ملخص 120 كلمة" value={social.summary_120} />
                         <InfoBlock label="تنبيه عاجل" value={social.breaking_alert} />

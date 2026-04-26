@@ -33,6 +33,8 @@ VIEW_ROLES = (
     UserRole.director,
     UserRole.editor_chief,
     UserRole.journalist,
+    UserRole.presenter,
+    UserRole.show_host,
     UserRole.social_media,
     UserRole.print_editor,
 )

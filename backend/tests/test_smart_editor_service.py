@@ -52,3 +52,37 @@ def test_editorial_policy_review_returns_reservations_on_blockers():
     assert report['decision'] == 'reservations'
     assert report['passed'] is False
     assert report['blocking_reasons']
+
+
+def test_social_variants_include_instagram_tiktok(monkeypatch):
+    class _FakeAi:
+        async def generate_json(self, _prompt):
+            return {
+                "facebook": "fb copy",
+                "x": "x copy",
+                "push": "push copy",
+                "summary_120": "summary copy",
+                "breaking_alert": "breaking copy",
+                "instagram": "instagram caption",
+                "tiktok_hook_3s": "hook",
+                "tiktok_main_point_10s": "main point",
+                "tiktok_cta_3s": "cta",
+                "tiktok_hashtags": "#one #two",
+                "tiktok_visual_direction": "vertical shots",
+                "tiktok_sound_or_trend_suggestion": "calm newsroom beat",
+            }
+
+    monkeypatch.setattr(smart_editor_service, "_get_ai_service", lambda: _FakeAi())
+
+    variants = asyncio.run(
+        smart_editor_service.social_variants(
+            source_text="source",
+            draft_title="title",
+            draft_html="<p>body</p>",
+        )
+    )
+
+    assert variants["facebook"] == "fb copy"
+    assert variants["instagram"] == "instagram caption"
+    assert variants["tiktok_hook_3s"] == "hook"
+    assert "main point" in variants["tiktok"]

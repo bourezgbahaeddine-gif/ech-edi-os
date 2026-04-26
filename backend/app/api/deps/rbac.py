@@ -8,6 +8,9 @@ from app.api.routes.auth import get_current_user
 from app.models.user import User, UserRole
 
 
+JOURNALIST_EQUIVALENT_ROLES = {UserRole.journalist, UserRole.presenter, UserRole.show_host}
+
+
 def enforce_roles(
     user: User,
     allowed: Iterable[UserRole],
@@ -15,6 +18,8 @@ def enforce_roles(
     message: str = "Not authorized for this action",
 ) -> None:
     allowed_set = set(allowed)
+    if UserRole.journalist in allowed_set and user.role in JOURNALIST_EQUIVALENT_ROLES:
+        return
     if user.role not in allowed_set:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 

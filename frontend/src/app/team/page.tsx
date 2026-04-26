@@ -9,6 +9,8 @@ import {
     Newspaper,
     MessageCircle,
     BookOpen,
+    Mic2,
+    Podcast,
     Users,
     PlusCircle,
     Clock4,
@@ -22,6 +24,8 @@ const ROLE_OPTIONS: Array<{ value: CreateUserPayload['role']; label: string }> =
     { value: 'director', label: 'المدير' },
     { value: 'editor_chief', label: 'رئيس التحرير' },
     { value: 'journalist', label: 'صحفي' },
+    { value: 'presenter', label: 'مذيع' },
+    { value: 'show_host', label: 'مقدم برنامج' },
     { value: 'social_media', label: 'سوشيال ميديا' },
     { value: 'print_editor', label: 'مادة الجريدة' },
 ];
@@ -30,6 +34,8 @@ const ROLE_CONFIG: Record<string, { label: string; color: string; icon: LucideIc
     director: { label: 'المدير', color: 'from-amber-500 to-orange-500', icon: Shield },
     editor_chief: { label: 'رئيس التحرير', color: 'from-purple-500 to-pink-500', icon: UserCheck },
     journalist: { label: 'صحفي', color: 'from-blue-500 to-cyan-500', icon: Newspaper },
+    presenter: { label: 'مذيع', color: 'from-sky-500 to-indigo-500', icon: Mic2 },
+    show_host: { label: 'مقدم برنامج', color: 'from-fuchsia-500 to-violet-500', icon: Podcast },
     social_media: { label: 'سوشيال ميديا', color: 'from-pink-500 to-rose-500', icon: MessageCircle },
     print_editor: { label: 'مادة الجريدة', color: 'from-emerald-500 to-teal-500', icon: BookOpen },
 };
@@ -167,7 +173,7 @@ export default function TeamPage() {
     }
 
     const totalOnline = members.filter((m) => m.is_online).length;
-    const roleOrder = ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'];
+    const roleOrder = ['director', 'editor_chief', 'journalist', 'presenter', 'show_host', 'social_media', 'print_editor'];
 
     return (
         <div className="space-y-6">

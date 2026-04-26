@@ -993,7 +993,10 @@ title, body_html, note, issues
         أريد نسخًا جاهزة للنشر وفق القنوات التالية.
 
         أعد JSON فقط بالمفاتيح:
-        facebook, x, push, summary_120, breaking_alert
+        facebook, x, push, summary_120, breaking_alert,
+        instagram, tiktok,
+        tiktok_hook_3s, tiktok_main_point_10s, tiktok_cta_3s,
+        tiktok_hashtags, tiktok_visual_direction, tiktok_sound_or_trend_suggestion
 
         قواعد مهمة:
         - التزم فقط بالمعلومات الموجودة في النص.
@@ -1002,6 +1005,13 @@ title, body_html, note, issues
         - push بين 15 و18 كلمة.
         - summary_120 بين 100 و130 حرفًا.
         - breaking_alert استخدمه فقط إذا كان الخبر عاجلًا.
+        - instagram: caption بين 500 و1000 حرف، سردي، emojis باعتدال، 15 إلى 30 hashtag، مع CTA واضح.
+        - tiktok_hook_3s: hook افتتاحي قصير جدًا.
+        - tiktok_main_point_10s: الفكرة الأساسية بنص سريع وواضح.
+        - tiktok_cta_3s: دعوة تفاعل قصيرة.
+        - tiktok_hashtags: حتى 5 hashtags فقط.
+        - tiktok_visual_direction: توجيه بصري مختصر للتصوير/المونتاج.
+        - tiktok_sound_or_trend_suggestion: اقتراح صوت أو اتجاه مناسب إن أمكن.
         - أعد JSON فقط دون أي شرح.
 
         العنوان الحالي:
@@ -1017,8 +1027,36 @@ title, body_html, note, issues
         ai = self._get_ai_service()
         data = await ai.generate_json(prompt) if ai else {}
         out: dict[str, str] = {}
-        for key in ["facebook", "x", "push", "summary_120", "breaking_alert"]:
+        for key in [
+            "facebook",
+            "x",
+            "push",
+            "summary_120",
+            "breaking_alert",
+            "instagram",
+            "tiktok",
+            "tiktok_hook_3s",
+            "tiktok_main_point_10s",
+            "tiktok_cta_3s",
+            "tiktok_hashtags",
+            "tiktok_visual_direction",
+            "tiktok_sound_or_trend_suggestion",
+        ]:
             out[key] = self._strip_side_comments(str(data.get(key) or "").strip())
+        if not out["tiktok"]:
+            tiktok_parts = [
+                f"Hook: {out['tiktok_hook_3s']}" if out["tiktok_hook_3s"] else "",
+                f"Main: {out['tiktok_main_point_10s']}" if out["tiktok_main_point_10s"] else "",
+                f"CTA: {out['tiktok_cta_3s']}" if out["tiktok_cta_3s"] else "",
+                f"Hashtags: {out['tiktok_hashtags']}" if out["tiktok_hashtags"] else "",
+                f"Visual: {out['tiktok_visual_direction']}" if out["tiktok_visual_direction"] else "",
+                (
+                    f"Sound/Trend: {out['tiktok_sound_or_trend_suggestion']}"
+                    if out["tiktok_sound_or_trend_suggestion"]
+                    else ""
+                ),
+            ]
+            out["tiktok"] = "\n".join(part for part in tiktok_parts if part)
         return out
 
     def extract_claims(self, *, text: str, source_url: str | None = None) -> list[dict[str, Any]]:

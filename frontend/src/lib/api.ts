@@ -1458,6 +1458,14 @@ export interface SocialApprovedItem {
         facebook?: string;
         x?: string;
         push?: string;
+        instagram?: string;
+        tiktok?: string;
+        tiktok_hook_3s?: string;
+        tiktok_main_point_10s?: string;
+        tiktok_cta_3s?: string;
+        tiktok_hashtags?: string;
+        tiktok_visual_direction?: string;
+        tiktok_sound_or_trend_suggestion?: string;
         summary_120?: string;
         breaking_alert?: string;
     };
@@ -2744,7 +2752,7 @@ export interface CreateUserPayload {
     full_name_ar: string;
     username: string;
     password: string;
-    role: 'director' | 'editor_chief' | 'journalist' | 'social_media' | 'print_editor';
+    role: 'director' | 'editor_chief' | 'journalist' | 'presenter' | 'show_host' | 'social_media' | 'print_editor';
     departments: string[];
     specialization?: string | null;
     is_active?: boolean;
@@ -2754,7 +2762,7 @@ export interface UpdateUserPayload {
     full_name_ar?: string;
     username?: string;
     password?: string;
-    role?: 'director' | 'editor_chief' | 'journalist' | 'social_media' | 'print_editor';
+    role?: 'director' | 'editor_chief' | 'journalist' | 'presenter' | 'show_host' | 'social_media' | 'print_editor';
     departments?: string[];
     specialization?: string | null;
     is_active?: boolean;

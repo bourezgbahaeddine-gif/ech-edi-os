@@ -14,6 +14,7 @@ import {
   type VideoScriptScene,
 } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { journalistServicesApi } from '@/lib/journalist-services-api';
 import { cn, formatRelativeTime } from '@/lib/utils';
 
 type TabKey = 'overview' | 'vo' | 'scenes' | 'assets' | 'captions' | 'versions' | 'delivery';
@@ -787,6 +788,35 @@ function VoPanel({
   const [hook, setHook] = useState(video.hook || '');
   const [voScript, setVoScript] = useState(video.vo_script || '');
   const [closing, setClosing] = useState(video.closing || '');
+  const [durationTargetSeconds, setDurationTargetSeconds] = useState(String(video.total_duration_s || ''));
+  const [broadcastText, setBroadcastText] = useState('');
+  const [broadcastReadSeconds, setBroadcastReadSeconds] = useState<number | null>(null);
+  const [broadcastChanges, setBroadcastChanges] = useState<string[]>([]);
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
+
+  const runBroadcastRewrite = async () => {
+    if (!voScript.trim()) return;
+    setBroadcastLoading(true);
+    setBroadcastError(null);
+    try {
+      const duration = durationTargetSeconds.trim() ? Number(durationTargetSeconds) : undefined;
+      const response = await journalistServicesApi.broadcastRewrite(
+        voScript,
+        Number.isFinite(duration) ? duration : undefined,
+        'ar',
+      );
+      setBroadcastText(String(response.data?.broadcast_text || ''));
+      setBroadcastReadSeconds(
+        typeof response.data?.estimated_read_seconds === 'number' ? response.data.estimated_read_seconds : null,
+      );
+      setBroadcastChanges(Array.isArray(response.data?.changes_summary) ? response.data.changes_summary.map(String) : []);
+    } catch {
+      setBroadcastError('تعذّر تحويل النص الآن. حاول مجددًا بعد لحظات.');
+    } finally {
+      setBroadcastLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -806,6 +836,66 @@ function VoPanel({
           rows={12}
         />
       </Field>
+      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">تحويل للبث</p>
+            <p className="text-xs text-slate-400">أعد صياغة النص ليصبح مريحًا للقراءة على الهواء من دون تعديل الأصل إلا إذا اخترت تطبيقه.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              min={10}
+              max={3600}
+              value={durationTargetSeconds}
+              onChange={(e) => setDurationTargetSeconds(e.target.value)}
+              placeholder="المدة بالثواني"
+              className="h-10 w-32 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-slate-200"
+            />
+            <button
+              type="button"
+              onClick={() => void runBroadcastRewrite()}
+              disabled={broadcastLoading || !voScript.trim()}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 text-sm text-amber-100"
+            >
+              {broadcastLoading ? 'جارٍ التحويل...' : 'تحويل للبث'}
+            </button>
+          </div>
+        </div>
+        {broadcastError ? <p className="text-xs text-rose-300">{broadcastError}</p> : null}
+        {broadcastText ? (
+          <div className="grid gap-3 xl:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p className="mb-2 text-xs font-semibold text-slate-300">النص الحالي</p>
+              <pre className="whitespace-pre-wrap text-sm text-slate-200">{voScript}</pre>
+            </div>
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-emerald-100">النص المهيأ للبث</p>
+                <button
+                  type="button"
+                  onClick={() => setVoScript(broadcastText)}
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs text-emerald-100"
+                >
+                  اعتمد النص البثي هنا
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap text-sm text-slate-100">{broadcastText}</pre>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
+                <span>المدة التقديرية: {broadcastReadSeconds ?? '-'} ثانية</span>
+                <span>عدد التغييرات الملخّصة: {broadcastChanges.length}</span>
+              </div>
+              {broadcastChanges.length ? (
+                <ul className="mt-2 list-disc pr-5 text-xs text-slate-300">
+                  {broadcastChanges.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
       <Field label="الخاتمة">
         <textarea
           value={closing}

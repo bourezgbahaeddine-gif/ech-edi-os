@@ -21,6 +21,8 @@ NEWSROOM_SERVICE_ROLES = (
     UserRole.director,
     UserRole.editor_chief,
     UserRole.journalist,
+    UserRole.presenter,
+    UserRole.show_host,
     UserRole.social_media,
     UserRole.print_editor,
 )
@@ -60,6 +62,11 @@ class EditorProofreadRequest(_LanguagePayload):
 class EditorSocialSummaryRequest(_LanguagePayload):
     text: str = Field(..., min_length=1)
     platform: str = Field(default="general", max_length=64)
+
+
+class EditorBroadcastRewriteRequest(_LanguagePayload):
+    text: str = Field(..., min_length=1)
+    duration_target_seconds: int | None = Field(default=None, ge=10, le=3600)
 
 
 class FactcheckVisionRequest(_StrictPayload):
@@ -165,6 +172,15 @@ def _lang_name(lang: str) -> str:
     return {"ar": "العربية الفصحى", "fr": "الفرنسية", "en": "الإنجليزية"}[lang]
 
 
+def _word_count(text: str) -> int:
+    return len([token for token in re.split(r"\s+", text or "") if token.strip()])
+
+
+def _estimated_read_seconds(text: str) -> int:
+    # Conservative broadcast pace for Arabic newsroom reading.
+    return max(1, round(_word_count(text) / 2.5))
+
+
 @router.post("/editor/tonality")
 async def editor_tonality(payload: EditorTonalityRequest):
     """Rewrite text in a newsroom-safe tone. Input: text, optional language."""
@@ -226,6 +242,48 @@ async def editor_social_summary(payload: EditorSocialSummaryRequest):
     )
     result = await ai_service.generate_text(prompt)
     return {"result": _sanitize_ai_text(result)}
+
+
+@router.post("/editor/broadcast-rewrite")
+async def editor_broadcast_rewrite(payload: EditorBroadcastRewriteRequest):
+    """Convert written newsroom text into a broadcast-readable script."""
+    text = payload.text.strip()
+    lang = _target_language(payload.language)
+    duration_hint = (
+        f"- قرّب طول النص إلى مدة قراءة تقارب {payload.duration_target_seconds} ثانية.\n"
+        if payload.duration_target_seconds
+        else ""
+    )
+    prompt = (
+        "أنت محرر نشرات أخبار محترف في الشروق. حوّل النص المكتوب إلى نص صالح للقراءة على الهواء.\n"
+        "القواعد:\n"
+        "- جمل قصيرة وواضحة.\n"
+        "- لا تستخدم تراكيب طويلة.\n"
+        "- بسّط الأرقام المعقدة.\n"
+        "- لا تغيّر الحقائق.\n"
+        "- لا تضف معلومة غير موجودة.\n"
+        f"- حافظ على {_lang_name(lang)} الإعلامية الفصحى السلسة.\n"
+        "- النص يجب أن يكون مريحًا للمذيع عند القراءة.\n"
+        f"{duration_hint}"
+        "أعد JSON فقط بالمفاتيح:\n"
+        "broadcast_text, changes_summary\n\n"
+        f"النص الأصلي:\n{text}"
+    )
+    raw_data = await ai_service.generate_json(prompt)
+    data = raw_data if isinstance(raw_data, dict) else {}
+    broadcast_text = _sanitize_ai_text(str(data.get("broadcast_text") or ""))
+    if not broadcast_text:
+        fallback = await ai_service.generate_text(prompt)
+        broadcast_text = _sanitize_ai_text(fallback)
+    changes_summary = data.get("changes_summary") or []
+    if not isinstance(changes_summary, list):
+        changes_summary = [str(changes_summary)]
+    return {
+        "broadcast_text": broadcast_text,
+        "word_count": _word_count(broadcast_text),
+        "estimated_read_seconds": _estimated_read_seconds(broadcast_text),
+        "changes_summary": [str(item).strip() for item in changes_summary if str(item).strip()],
+    }
 
 
 @router.post("/factcheck/vision")

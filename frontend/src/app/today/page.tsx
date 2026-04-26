@@ -34,6 +34,8 @@ type Role =
     | 'director'
     | 'editor_chief'
     | 'journalist'
+    | 'presenter'
+    | 'show_host'
     | 'social_media'
     | 'print_editor'
     | 'fact_checker'
@@ -62,6 +64,8 @@ function normalizeRole(role: string): Role | null {
         'director',
         'editor_chief',
         'journalist',
+        'presenter',
+        'show_host',
         'social_media',
         'print_editor',
         'fact_checker',

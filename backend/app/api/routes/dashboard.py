@@ -46,6 +46,8 @@ DASHBOARD_NEWSROOM_ROLES = (
     UserRole.director,
     UserRole.editor_chief,
     UserRole.journalist,
+    UserRole.presenter,
+    UserRole.show_host,
     UserRole.social_media,
     UserRole.print_editor,
 )
@@ -1071,7 +1073,7 @@ async def dashboard_notifications(
 
     if await _digital_tables_ready(db):
         try:
-            if current_user.role in {UserRole.director, UserRole.editor_chief, UserRole.journalist, UserRole.print_editor}:
+            if current_user.role in {UserRole.director, UserRole.editor_chief, UserRole.journalist, UserRole.presenter, UserRole.show_host, UserRole.print_editor}:
                 digital_scope = ChannelScope(can_news=True, can_tv=True)
             elif current_user.role == UserRole.social_media:
                 digital_scope = await digital_team_service.resolve_scope(db, current_user)

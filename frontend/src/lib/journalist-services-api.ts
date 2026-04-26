@@ -5,6 +5,8 @@ export const journalistServicesApi = {
     inverted: (text: string, language = 'ar') => api.post('/services/editor/inverted-pyramid', { text, language }),
     proofread: (text: string, language = 'ar') => api.post('/services/editor/proofread', { text, language }),
     social: (text: string, platform: string, language = 'ar') => api.post('/services/editor/social-summary', { text, platform, language }),
+    broadcastRewrite: (text: string, duration_target_seconds?: number, language = 'ar') =>
+        api.post('/services/editor/broadcast-rewrite', { text, duration_target_seconds, language }),
 
     vision: (image_url: string, question: string) => api.post('/services/factcheck/vision', { image_url, question }),
     consistency: (text: string, reference: string) => api.post('/services/factcheck/consistency', { text, reference }),

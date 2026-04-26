@@ -12,7 +12,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scribe import scribe_agent
-from app.api.deps.rbac import enforce_roles, require_roles
+from app.api.deps.rbac import JOURNALIST_EQUIVALENT_ROLES, enforce_roles, require_roles
 from app.api.routes.auth import get_current_user
 from app.core.config import get_settings
 from app.core.correlation import get_correlation_id, get_request_id
@@ -975,7 +975,7 @@ def assert_draft_access(
     owns_draft = _draft_actor_matches(draft, current_user)
     readable_shared_statuses = {"applied", "archived"}
 
-    if role == UserRole.journalist:
+    if role in JOURNALIST_EQUIVALENT_ROLES:
         if owns_draft:
             return
         raise HTTPException(status_code=404, detail="Draft not found")
@@ -1107,7 +1107,7 @@ async def _submit_draft_for_chief_approval(
         policy_report=policy_report,
         fact_report=fact_report,
     )
-    journalist_direct_path = current_user.role == UserRole.journalist
+    journalist_direct_path = current_user.role in JOURNALIST_EQUIVALENT_ROLES
     submitted_for_chief_approval = False
     transition_action = "submit_for_chief_approval"
 
@@ -2952,7 +2952,7 @@ async def self_approve_workspace_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _require_roles(current_user, {UserRole.journalist})
+    _require_roles(current_user, JOURNALIST_EQUIVALENT_ROLES)
     if not settings.editorial_direct_publish_enabled:
         raise HTTPException(status_code=403, detail="Self-approve is disabled by configuration.")
     draft = await _get_latest_draft_or_404(db, work_id, current_user=current_user, action="write")

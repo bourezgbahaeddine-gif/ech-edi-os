@@ -18,6 +18,8 @@ class UserRole(str, enum.Enum):
     director = "director"
     editor_chief = "editor_chief"
     journalist = "journalist"
+    presenter = "presenter"
+    show_host = "show_host"
     social_media = "social_media"
     print_editor = "print_editor"
 

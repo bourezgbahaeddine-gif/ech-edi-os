@@ -2,7 +2,7 @@
 
 import type { DashboardNotification } from '@/lib/api';
 
-type Role = 'director' | 'editor_chief' | 'journalist' | 'social_media' | 'print_editor' | 'fact_checker' | 'observer' | 'guest';
+type Role = 'director' | 'editor_chief' | 'journalist' | 'presenter' | 'show_host' | 'social_media' | 'print_editor' | 'fact_checker' | 'observer' | 'guest';
 export type NotificationInterruptionLevel = 'interrupt_now' | 'defer' | 'batch' | 'hidden_from_role';
 
 export function normalizeUxRole(role: string | null | undefined): Role {
@@ -12,6 +12,8 @@ export function normalizeUxRole(role: string | null | undefined): Role {
         value === 'director' ||
         value === 'editor_chief' ||
         value === 'journalist' ||
+        value === 'presenter' ||
+        value === 'show_host' ||
         value === 'social_media' ||
         value === 'print_editor' ||
         value === 'fact_checker' ||
@@ -30,7 +32,7 @@ export function classifyNotificationInterruption(
     const type = String(item.type || '').toLowerCase();
     const severity = String(item.severity || '').toLowerCase();
 
-    if (role === 'journalist' || role === 'social_media' || role === 'print_editor' || role === 'fact_checker') {
+    if (role === 'journalist' || role === 'presenter' || role === 'show_host' || role === 'social_media' || role === 'print_editor' || role === 'fact_checker') {
         if (type === 'published_quality') return 'hidden_from_role';
     }
 

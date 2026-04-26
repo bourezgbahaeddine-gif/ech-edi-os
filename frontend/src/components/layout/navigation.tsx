@@ -33,6 +33,8 @@ export type Role =
     | 'director'
     | 'editor_chief'
     | 'journalist'
+    | 'presenter'
+    | 'show_host'
     | 'social_media'
     | 'print_editor'
     | 'fact_checker'
@@ -60,6 +62,8 @@ export function normalizeRole(role: string): Role | null {
         'director',
         'editor_chief',
         'journalist',
+        'presenter',
+        'show_host',
         'social_media',
         'print_editor',
         'fact_checker',
@@ -74,7 +78,7 @@ export const navItems: NavItem[] = [
         label: 'اليوم',
         description: 'نقطة البداية اليومية والإجراء التالي المقترح.',
         icon: LayoutDashboard,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor', 'fact_checker', 'observer'],
+        roles: ['director', 'editor_chief', 'journalist', 'presenter', 'show_host', 'social_media', 'print_editor', 'fact_checker', 'observer'],
         section: 'primary',
     },
     {
@@ -100,7 +104,7 @@ export const navItems: NavItem[] = [
         label: 'الأخبار',
         description: 'طابور الأخبار والتحرير السريع.',
         icon: Newspaper,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor', 'fact_checker'],
+        roles: ['director', 'editor_chief', 'journalist', 'presenter', 'social_media', 'print_editor', 'fact_checker'],
         section: 'primary',
     },
     {
@@ -154,7 +158,7 @@ export const navItems: NavItem[] = [
         label: 'الأرشيف',
         description: 'الرجوع إلى المواد السابقة والمراجع المنشورة.',
         icon: Archive,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor', 'fact_checker'],
+        roles: ['director', 'editor_chief', 'journalist', 'presenter', 'show_host', 'social_media', 'print_editor', 'fact_checker'],
         section: 'knowledge',
     },
     {
@@ -162,7 +166,7 @@ export const navItems: NavItem[] = [
         label: 'الذاكرة التحريرية',
         description: 'مساحة الذاكرة التحريرية والدروس المتراكمة.',
         icon: BookOpen,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'],
+        roles: ['director', 'editor_chief', 'journalist', 'show_host', 'social_media', 'print_editor'],
         section: 'knowledge',
     },
     {
@@ -218,7 +222,7 @@ export const navItems: NavItem[] = [
         label: 'السكربت',
         description: 'بناء النصوص والسيناريوهات التحريرية.',
         icon: ScrollText,
-        roles: ['director', 'editor_chief', 'journalist', 'social_media', 'print_editor'],
+        roles: ['director', 'editor_chief', 'journalist', 'presenter', 'show_host', 'social_media', 'print_editor'],
         section: 'tools',
     },
     {
@@ -297,6 +301,8 @@ const rolePrimaryOrder: Record<Role, string[]> = {
     director: ['/', '/dashboard', '/today', '/news', '/workspace-drafts', '/editorial', '/stories', '/events'],
     editor_chief: ['/today', '/editorial', '/news', '/workspace-drafts', '/stories', '/events', '/ux-insights'],
     journalist: ['/today', '/workspace-drafts', '/news', '/memory', '/stories'],
+    presenter: ['/today', '/news', '/scripts', '/archive'],
+    show_host: ['/today', '/scripts', '/archive', '/memory'],
     social_media: ['/today', '/workspace-drafts', '/news', '/digital', '/stories'],
     print_editor: ['/today', '/workspace-drafts', '/news', '/archive', '/stories'],
     fact_checker: ['/today', '/news', '/memory', '/services/fact-check', '/help'],
