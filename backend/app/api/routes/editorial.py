@@ -1987,7 +1987,7 @@ async def social_approved_feed(
                 [
                     NewsStatus.READY_FOR_MANUAL_PUBLISH,
                     NewsStatus.PUBLISHED,
-                    NewsStatus.SOCIAL_PACKAGED,
+                    NewsStatus.SOCIAL_PACKAGED.value,
                 ]
             )
         )

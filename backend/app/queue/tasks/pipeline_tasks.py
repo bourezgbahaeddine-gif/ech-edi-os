@@ -279,7 +279,7 @@ async def _run_social_package(job: JobRun) -> dict:
 
         status_updated = False
         if article.status == NewsStatus.PUBLISHED and variants:
-            article.status = NewsStatus.SOCIAL_PACKAGED
+            article.status = NewsStatus.SOCIAL_PACKAGED.value
             status_updated = True
 
         await db.commit()

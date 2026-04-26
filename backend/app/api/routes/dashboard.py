@@ -120,7 +120,7 @@ async def get_dashboard_stats(
     )
     published = await db.execute(
         select(func.count(Article.id)).where(
-            Article.status.in_([NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED])
+            Article.status.in_([NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED.value])
         )
     )
     breaking = await db.execute(
@@ -1037,7 +1037,7 @@ async def dashboard_notifications(
                         [
                             NewsStatus.READY_FOR_MANUAL_PUBLISH,
                             NewsStatus.PUBLISHED,
-                            NewsStatus.SOCIAL_PACKAGED,
+                            NewsStatus.SOCIAL_PACKAGED.value,
                         ]
                     ),
                     Article.updated_at >= now - timedelta(hours=24),

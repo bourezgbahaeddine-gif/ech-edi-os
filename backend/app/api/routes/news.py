@@ -447,7 +447,12 @@ async def list_articles(
     if status:
         try:
             selected_status = NewsStatus(status)
-            filters.append(Article.status == selected_status)
+            selected_status_filter = (
+                selected_status.value
+                if selected_status == NewsStatus.SOCIAL_PACKAGED
+                else selected_status
+            )
+            filters.append(Article.status == selected_status_filter)
             if selected_status not in {
                 NewsStatus.PUBLISHED,
                 NewsStatus.SOCIAL_PACKAGED,
@@ -462,7 +467,7 @@ async def list_articles(
         filters.append(
             or_(
                 Article.status == NewsStatus.PUBLISHED,
-                Article.status == NewsStatus.SOCIAL_PACKAGED,
+                Article.status == NewsStatus.SOCIAL_PACKAGED.value,
                 func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
             )
         )
