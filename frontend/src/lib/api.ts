@@ -803,6 +803,33 @@ export interface ArticleInsight {
     relation_count: number;
 }
 
+export interface PriorityQueueItem {
+    article_id: number;
+    title: string;
+    status: string;
+    category: string | null;
+    source_name: string | null;
+    created_at: string | null;
+    published_at: string | null;
+    importance_score: number;
+    is_breaking: boolean;
+    urgency: string | null;
+    priority_score: number;
+    reason: string[];
+    recommended_action: string;
+    freshness_score?: number;
+    competitor_pressure?: number;
+    cluster_velocity?: number;
+    age_hours?: number;
+}
+
+export interface PriorityQueueResponse {
+    generated_at: string;
+    window_hours: number;
+    count: number;
+    items: PriorityQueueItem[];
+}
+
 export interface DraftVersionDiff {
     work_id: string;
     from_version: number;
@@ -1483,6 +1510,12 @@ export const newsApi = {
     get: (id: number) => api.get<Article>(`/news/${id}`),
     breaking: (limit?: number) => api.get<ArticleBrief[]>('/news/breaking/latest', { params: { limit } }),
     pending: (limit?: number) => api.get<ArticleBrief[]>('/news/candidates/pending', { params: { limit } }),
+    priorityQueue: (params?: {
+        hours?: number;
+        limit?: number;
+        category?: string;
+        include_published?: boolean;
+    }) => api.get<PriorityQueueResponse>('/news/priority-queue', { params }),
     insights: (articleIds: number[]) => {
         const params = new URLSearchParams();
         articleIds.forEach((id) => params.append('article_ids', String(id)));

@@ -9,9 +9,10 @@ import math
 import re
 import unicodedata
 from urllib.parse import urlparse, urlunparse
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, select, func, desc, and_, or_, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
@@ -21,6 +22,7 @@ from app.models import (
     Article,
     ArticleRelation,
     ArticleVector,
+    CompetitorXrayItem,
     NewsCategory,
     NewsStatus,
     StoryCluster,
@@ -75,6 +77,22 @@ LOCAL_PRIORITY_SOURCES = [
     "الخبر",
     "النهار",
 ]
+EDITORIAL_PRIORITY_BASE_STATUSES = [
+    NewsStatus.CANDIDATE,
+    NewsStatus.APPROVED,
+    NewsStatus.APPROVED_HANDOFF,
+    NewsStatus.DRAFT_GENERATED,
+    NewsStatus.READY_FOR_CHIEF_APPROVAL,
+    NewsStatus.READY_FOR_MANUAL_PUBLISH,
+]
+EDITORIAL_PRIORITY_PUBLISHED_STATUSES = [NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED]
+EDITORIAL_URGENCY_BONUS = {
+    UrgencyLevel.LOW.value: 0.0,
+    UrgencyLevel.MEDIUM.value: 0.8,
+    UrgencyLevel.HIGH.value: 1.4,
+    UrgencyLevel.BREAKING.value: 2.0,
+}
+
 
 def _tokenize(text: str) -> set[str]:
     return {m.group(0).lower() for m in TOKEN_RE.finditer(text or "")}
@@ -183,6 +201,224 @@ async def _expire_stale_breaking_flags(db: AsyncSession) -> None:
     await db.commit()
 
 
+def _priority_queue_statuses(include_published: bool) -> list[NewsStatus]:
+    statuses = list(EDITORIAL_PRIORITY_BASE_STATUSES)
+    if include_published:
+        statuses.extend(EDITORIAL_PRIORITY_PUBLISHED_STATUSES)
+    return statuses
+
+
+def _priority_recommended_action(status: str) -> str:
+    value = (status or "").lower()
+    if value == NewsStatus.CANDIDATE.value:
+        return "ابدأ التغطية الآن"
+    if value in {NewsStatus.APPROVED.value, NewsStatus.APPROVED_HANDOFF.value}:
+        return "ابدأ التحرير الآن"
+    if value == NewsStatus.DRAFT_GENERATED.value:
+        return "أكمل المسودة الآن"
+    if value == NewsStatus.READY_FOR_CHIEF_APPROVAL.value:
+        return "احسم الاعتماد الآن"
+    if value == NewsStatus.READY_FOR_MANUAL_PUBLISH.value:
+        return "راجع الجاهز للنشر الآن"
+    if value in {NewsStatus.PUBLISHED.value, NewsStatus.SOCIAL_PACKAGED.value}:
+        return "تابع التغطية أو التحديث التحريري"
+    return "راجع المادة الآن"
+
+
+def _priority_freshness_score(*, reference_time: datetime | None, now: datetime, window_hours: int) -> tuple[float, float]:
+    if reference_time is None:
+        return 0.0, float(window_hours)
+    age_hours = max((now - reference_time).total_seconds() / 3600.0, 0.0)
+    ratio = max(0.0, 1.0 - min(age_hours / max(window_hours, 1), 1.0))
+    return round(ratio * 2.0, 2), age_hours
+
+
+def _priority_competitor_pressure(payload: dict[str, Any] | None) -> float:
+    if not payload:
+        return 0.0
+    count = int(payload.get("count") or 0)
+    max_priority = float(payload.get("max_priority") or 0.0)
+    return round(min((count * 0.55) + (max_priority * 0.08), 2.2), 2)
+
+
+def _priority_cluster_velocity(cluster_size: int | float | None) -> float:
+    size = max(int(cluster_size or 0), 0)
+    if size <= 1:
+        return 0.0
+    return round(min((size - 1) * 0.35, 1.6), 2)
+
+
+def _build_priority_queue_items(
+    articles: list[Article],
+    *,
+    now: datetime | None = None,
+    window_hours: int = 24,
+    include_published: bool = False,
+    competitor_map: dict[int, dict[str, Any]] | None = None,
+    cluster_map: dict[int, int] | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    current_time = now or datetime.utcnow()
+    allowed_statuses = {status.value for status in _priority_queue_statuses(include_published)}
+    competitor_map = competitor_map or {}
+    cluster_map = cluster_map or {}
+    items: list[dict[str, Any]] = []
+
+    for article in articles:
+        status_value = (article.status.value if isinstance(article.status, NewsStatus) else str(article.status or "")).lower()
+        if status_value == NewsStatus.ARCHIVED.value:
+            continue
+        if status_value not in allowed_statuses:
+            continue
+
+        reference_time = article.created_at or article.crawled_at or article.updated_at
+        freshness_score, age_hours = _priority_freshness_score(
+            reference_time=reference_time,
+            now=current_time,
+            window_hours=window_hours,
+        )
+        urgency_value = (article.urgency.value if isinstance(article.urgency, UrgencyLevel) else str(article.urgency or "")).lower()
+        urgency_bonus = float(EDITORIAL_URGENCY_BONUS.get(urgency_value, 0.0))
+        breaking_bonus = 2.0 if bool(article.is_breaking) else 0.0
+        competitor_pressure = _priority_competitor_pressure(competitor_map.get(int(article.id)))
+        cluster_velocity = _priority_cluster_velocity(cluster_map.get(int(article.id)))
+        priority_score = round(
+            (float(article.importance_score or 0) * 0.35)
+            + breaking_bonus
+            + freshness_score
+            + urgency_bonus
+            + competitor_pressure
+            + cluster_velocity,
+            2,
+        )
+
+        reasons: list[str] = []
+        if bool(article.is_breaking):
+            reasons.append("خبر عاجل")
+        if int(article.importance_score or 0) >= 8:
+            reasons.append("أهمية مرتفعة")
+        elif int(article.importance_score or 0) >= 6:
+            reasons.append("أهمية جيدة")
+        if freshness_score >= 1.4:
+            reasons.append("حديث جدًا")
+        elif freshness_score >= 0.8:
+            reasons.append("حديث")
+        if urgency_bonus >= 1.4:
+            reasons.append("أولوية زمنية مرتفعة")
+        if competitor_pressure >= 0.8:
+            reasons.append("ضغط تنافسي")
+        if cluster_velocity >= 0.7:
+            reasons.append("زخم قصصي متصاعد")
+        if not reasons:
+            reasons.append("يحتاج متابعة تحريرية")
+
+        items.append(
+            {
+                "article_id": int(article.id),
+                "title": article.title_ar or article.original_title,
+                "status": status_value,
+                "category": article.category.value if isinstance(article.category, NewsCategory) else article.category,
+                "source_name": article.source_name,
+                "created_at": article.created_at.isoformat() if article.created_at else None,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "importance_score": int(article.importance_score or 0),
+                "is_breaking": bool(article.is_breaking),
+                "urgency": urgency_value or None,
+                "priority_score": priority_score,
+                "reason": reasons,
+                "recommended_action": _priority_recommended_action(status_value),
+                "freshness_score": freshness_score,
+                "competitor_pressure": competitor_pressure,
+                "cluster_velocity": cluster_velocity,
+                "age_hours": round(age_hours, 2),
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            float(item["priority_score"]),
+            float(item["competitor_pressure"]),
+            float(item["cluster_velocity"]),
+            item["created_at"] or "",
+        ),
+        reverse=True,
+    )
+    if limit is not None:
+        return items[: max(1, int(limit))]
+    return items
+
+
+async def _load_competitor_pressure_map(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+    cutoff: datetime,
+) -> dict[int, dict[str, Any]]:
+    if not article_ids:
+        return {}
+    try:
+        rows = await db.execute(
+            select(
+                CompetitorXrayItem.matched_article_id,
+                func.count(CompetitorXrayItem.id).label("gap_count"),
+                func.max(CompetitorXrayItem.priority_score).label("max_priority_score"),
+            )
+            .where(
+                and_(
+                    CompetitorXrayItem.matched_article_id.in_(article_ids),
+                    CompetitorXrayItem.status == "new",
+                    CompetitorXrayItem.created_at >= cutoff,
+                )
+            )
+            .group_by(CompetitorXrayItem.matched_article_id)
+        )
+    except SQLAlchemyError:
+        await db.rollback()
+        return {}
+
+    out: dict[int, dict[str, Any]] = {}
+    for article_id, gap_count, max_priority_score in rows.all():
+        if article_id is None:
+            continue
+        out[int(article_id)] = {
+            "count": int(gap_count or 0),
+            "max_priority": float(max_priority_score or 0.0),
+        }
+    return out
+
+
+async def _load_cluster_velocity_map(
+    db: AsyncSession,
+    *,
+    article_ids: list[int],
+) -> dict[int, int]:
+    if not article_ids:
+        return {}
+    sm_self = StoryClusterMember.__table__.alias("pq_sm_self")
+    sm_all = StoryClusterMember.__table__.alias("pq_sm_all")
+    try:
+        rows = await db.execute(
+            select(
+                sm_self.c.article_id.label("article_id"),
+                func.count(sm_all.c.article_id).label("cluster_size"),
+            )
+            .select_from(
+                sm_self.join(sm_all, sm_all.c.cluster_id == sm_self.c.cluster_id)
+            )
+            .where(sm_self.c.article_id.in_(article_ids))
+            .group_by(sm_self.c.article_id)
+        )
+    except SQLAlchemyError:
+        await db.rollback()
+        return {}
+
+    return {
+        int(article_id): int(cluster_size or 0)
+        for article_id, cluster_size in rows.all()
+        if article_id is not None
+    }
+
+
 @router.get("/", response_model=PaginatedResponse)
 async def list_articles(
     page: int = Query(1, ge=1),
@@ -274,6 +510,59 @@ async def list_articles(
         per_page=per_page,
         pages=(total + per_page - 1) // per_page,
     )
+
+
+@router.get("/priority-queue")
+async def priority_queue(
+    hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(20, ge=1, le=100),
+    category: Optional[str] = None,
+    include_published: bool = False,
+    _: object = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return editorial priority queue ranked by urgency, freshness, and available signals."""
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=hours)
+    allowed_statuses = _priority_queue_statuses(include_published)
+
+    filters = [
+        Article.status.in_(allowed_statuses),
+        Article.status != NewsStatus.ARCHIVED,
+        func.coalesce(Article.created_at, Article.crawled_at) >= cutoff,
+    ]
+    if category:
+        try:
+            selected_category = NewsCategory(category)
+        except ValueError:
+            raise HTTPException(400, f"Invalid category: {category}")
+        filters.append(Article.category == selected_category)
+
+    rows = await db.execute(
+        select(Article)
+        .where(and_(*filters))
+        .order_by(desc(Article.importance_score), desc(Article.created_at), desc(Article.crawled_at))
+        .limit(max(limit * 4, 40))
+    )
+    articles = list(rows.scalars().all())
+    article_ids = [int(article.id) for article in articles]
+    competitor_map = await _load_competitor_pressure_map(db, article_ids=article_ids, cutoff=cutoff)
+    cluster_map = await _load_cluster_velocity_map(db, article_ids=article_ids)
+    items = _build_priority_queue_items(
+        articles,
+        now=now,
+        window_hours=hours,
+        include_published=include_published,
+        competitor_map=competitor_map,
+        cluster_map=cluster_map,
+        limit=limit,
+    )
+    return {
+        "generated_at": now.isoformat(),
+        "window_hours": hours,
+        "count": len(items),
+        "items": items,
+    }
 
 
 @router.get("/breaking/latest")

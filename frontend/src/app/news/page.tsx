@@ -5,7 +5,7 @@ import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { isAxiosError } from 'axios';
-import { newsApi, dashboardApi, editorialApi, type ArticleBrief, type DashboardNotification } from '@/lib/api';
+import { newsApi, dashboardApi, editorialApi, type ArticleBrief, type DashboardNotification, type PriorityQueueItem } from '@/lib/api';
 import { cn, formatRelativeTime, getStatusColor, getCategoryLabel, isFreshBreaking, truncate } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { WorkflowCard } from '@/components/workflow/WorkflowCard';
@@ -18,7 +18,7 @@ import {
     Newspaper, Search, ExternalLink,
     ChevronLeft, ChevronRight,
     RefreshCw,
-    Rows3, TableProperties, ArrowLeft,
+    Rows3, TableProperties, ArrowLeft, TrendingUp,
 } from 'lucide-react';
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -64,7 +64,7 @@ function NewsPageContent() {
         if (initialBreakingParam === 'false') return false;
         return null;
     });
-    const [viewMode, setViewMode] = useState<'queue' | 'table'>('queue');
+    const [viewMode, setViewMode] = useState<'queue' | 'table' | 'priority'>('queue');
     const [draftEditor, setDraftEditor] = useState<{
         articleId: number;
         action: string;
@@ -240,6 +240,31 @@ function NewsPageContent() {
         return out;
     }, [articles, insightsMap]);
 
+    const {
+        data: priorityQueueData,
+        isLoading: priorityQueueLoading,
+        error: priorityQueueError,
+    } = useQuery({
+        queryKey: ['news-priority-queue', category],
+        queryFn: () => newsApi.priorityQueue({
+            hours: 24,
+            limit: 20,
+            category: category || undefined,
+            include_published: false,
+        }),
+        enabled: viewMode === 'priority',
+        staleTime: 30000,
+        refetchOnWindowFocus: true,
+    });
+    const priorityItems = useMemo<PriorityQueueItem[]>(
+        () => priorityQueueData?.data?.items ?? [],
+        [priorityQueueData?.data?.items],
+    );
+    const priorityErrorMessage = useMemo(
+        () => (priorityQueueError ? getApiErrorMessage(priorityQueueError, 'تعذر تحميل طابور الأولوية التحريرية') : null),
+        [priorityQueueError],
+    );
+
     const tutorialArticle = visibleArticles[0];
 
     const handleNewsNext = () => {
@@ -384,6 +409,21 @@ function NewsPageContent() {
         return { label: 'افتح المادة', href: `/news/${article.id}` };
     };
 
+    const getEditHrefForStatus = (articleId: number, rawStatus: string | null | undefined) => {
+        const normalizedStatus = (rawStatus || '').toLowerCase();
+        if ([
+            'candidate',
+            'classified',
+            'approved',
+            'approved_handoff',
+            'draft_generated',
+            'approval_request_with_reservations',
+        ].includes(normalizedStatus)) {
+            return `/workspace-drafts?article_id=${articleId}`;
+        }
+        return null;
+    };
+
     const getImportanceTone = (article: ArticleBrief) => {
         if (article.is_breaking) return 'danger' as const;
         if (article.importance_score >= 8) return 'danger' as const;
@@ -405,8 +445,11 @@ function NewsPageContent() {
         return { label: 'أولوية عادية', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' };
     };
 
-    const recommendedArticle = visibleArticles[0];
+    const recommendedArticle = viewMode === 'priority' ? null : visibleArticles[0];
     const recommendedAction = recommendedArticle ? getNextActionForArticle(recommendedArticle) : null;
+    const newsCountLabel = viewMode === 'priority'
+        ? `${priorityItems.length || 0} مادة تحتاج تغطية الآن`
+        : `${data?.data?.total || 0} خبر في غرفة الأخبار`;
 
     return (
         <div className="space-y-6">
@@ -450,7 +493,7 @@ function NewsPageContent() {
                             الأخبار
                         </h1>
                         <p className="text-sm text-gray-500 mt-1">
-                            {data?.data?.total || 0} خبر في غرفة الأخبار
+                            {newsCountLabel}
                         </p>
                     </div>
 
@@ -540,6 +583,7 @@ function NewsPageContent() {
                             value={search}
                             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                             placeholder="ابحث في الأخبار..."
+                            disabled={viewMode === 'priority'}
                             className="w-full h-9 pr-10 pl-4 rounded-xl bg-white/5 border border-white/5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-emerald-500/40 transition-colors"
                             dir="rtl"
                         />
@@ -548,6 +592,7 @@ function NewsPageContent() {
                     <select
                         value={status}
                         onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+                        disabled={viewMode === 'priority'}
                         className="h-9 px-3 rounded-xl bg-white/5 border border-white/5 text-sm text-gray-300 focus:outline-none focus:border-emerald-500/40 appearance-none cursor-pointer"
                     >
                         <option value="">كل الحالات</option>
@@ -594,14 +639,29 @@ function NewsPageContent() {
                             <TableProperties className="w-3.5 h-3.5" />
                             عرض تفصيلي
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('priority')}
+                            className={cn(
+                                'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors',
+                                viewMode === 'priority'
+                                    ? 'bg-amber-500/20 text-amber-200'
+                                    : 'text-gray-300 hover:text-white',
+                            )}
+                        >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            الأولوية التحريرية
+                        </button>
                     </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                     <button
-                        onClick={() => { setIsBreaking(null); setStatus(''); setCategory(''); setPage(1); }}
+                        onClick={() => { if (viewMode !== 'priority') { setIsBreaking(null); setStatus(''); setCategory(''); setPage(1); } }}
+                        disabled={viewMode === 'priority'}
                         className={cn(
                             'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                            viewMode === 'priority' && 'opacity-50 cursor-not-allowed',
                             isBreaking === null && status === '' && category === ''
                                 ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-200'
                                 : 'border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-white/20'
@@ -611,9 +671,11 @@ function NewsPageContent() {
                     </button>
 
                     <button
-                        onClick={() => { setIsBreaking(true); setPage(1); }}
+                        onClick={() => { if (viewMode !== 'priority') { setIsBreaking(true); setPage(1); } }}
+                        disabled={viewMode === 'priority'}
                         className={cn(
                             'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                            viewMode === 'priority' && 'opacity-50 cursor-not-allowed',
                             isBreaking === true
                                 ? 'border-red-500/40 bg-red-500/20 text-red-200'
                                 : 'border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-white/20'
@@ -623,9 +685,11 @@ function NewsPageContent() {
                     </button>
 
                     <button
-                        onClick={() => { setStatus('candidate'); setPage(1); }}
+                        onClick={() => { if (viewMode !== 'priority') { setStatus('candidate'); setPage(1); } }}
+                        disabled={viewMode === 'priority'}
                         className={cn(
                             'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                            viewMode === 'priority' && 'opacity-50 cursor-not-allowed',
                             status === 'candidate'
                                 ? 'border-amber-500/40 bg-amber-500/20 text-amber-200'
                                 : 'border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-white/20'
@@ -651,12 +715,112 @@ function NewsPageContent() {
                 </div>
             </div>
 
-            {isLoading ? (
+            {(viewMode === 'priority' ? priorityQueueLoading : isLoading) ? (
                 <div className={cn(viewMode === 'queue' ? 'space-y-4' : 'rounded-2xl border border-white/10 bg-gray-900/35 p-4')}>
                     {Array.from({ length: viewMode === 'queue' ? 6 : 1 }).map((_, i) => (
                         <div key={i} className={cn(viewMode === 'queue' ? 'h-44 rounded-2xl bg-gray-800/30 border border-white/5 animate-pulse' : 'h-72 rounded-2xl bg-gray-800/30 animate-pulse')} />
                     ))}
                 </div>
+            ) : viewMode === 'priority' ? (
+                priorityErrorMessage ? (
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-6 py-8 text-center text-sm text-amber-100">
+                        {priorityErrorMessage}
+                    </div>
+                ) : priorityItems.length > 0 ? (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                            هذه القائمة تجيب عن سؤال: ما الأخبار أو المواضيع التي تحتاج تغطية الآن؟
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                            {priorityItems.map((item) => {
+                                const editHref = getEditHrefForStatus(item.article_id, item.status);
+                                return (
+                                    <div
+                                        key={item.article_id}
+                                        className="rounded-2xl border border-white/10 bg-gray-900/40 p-4 space-y-3"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="space-y-2">
+                                                <h3 className="text-base font-semibold text-white leading-7">
+                                                    {item.title}
+                                                </h3>
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
+                                                    <span className={cn('px-2 py-0.5 rounded-md border', getStatusColor((item.status || '').toLowerCase()))}>
+                                                        {getStatusLabel(item.status)}
+                                                    </span>
+                                                    {item.category && (
+                                                        <span className="px-2 py-0.5 rounded-md border border-white/10 bg-white/5">
+                                                            {getCategoryLabel(item.category)}
+                                                        </span>
+                                                    )}
+                                                    {item.source_name && (
+                                                        <span className="px-2 py-0.5 rounded-md border border-white/10 bg-white/5">
+                                                            {item.source_name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center">
+                                                <div className="text-[10px] text-amber-200/80">Priority</div>
+                                                <div className="text-lg font-bold text-amber-100">
+                                                    {item.priority_score.toFixed(1)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                                            <span>الأهمية: {item.importance_score}</span>
+                                            <span className="text-gray-600">•</span>
+                                            <span>الوقت: {formatRelativeTime(item.created_at || item.published_at || '')}</span>
+                                            {item.is_breaking && (
+                                                <>
+                                                    <span className="text-gray-600">•</span>
+                                                    <span className="text-red-300">عاجل</span>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                                            {item.recommended_action}
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2">
+                                            {item.reason.map((reason) => (
+                                                <span
+                                                    key={`${item.article_id}-${reason}`}
+                                                    className="px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-xs text-gray-200"
+                                                >
+                                                    {reason}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        <div className={cn('grid gap-2', editHref ? 'grid-cols-2' : 'grid-cols-1')}>
+                                            <Link
+                                                href={`/news/${item.article_id}`}
+                                                className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-200 hover:text-white hover:border-white/20 transition-colors flex items-center justify-center"
+                                            >
+                                                فتح الخبر
+                                            </Link>
+                                            {editHref && (
+                                                <Link
+                                                    href={editHref}
+                                                    className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-100 hover:bg-emerald-500/25 transition-colors flex items-center justify-center"
+                                                >
+                                                    التحرير
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-gray-900/20 px-6 py-10 text-center text-sm text-slate-400">
+                        لا توجد مواد حرجة تحتاج تغطية الآن
+                    </div>
+                )
             ) : visibleArticles.length > 0 ? (
                 viewMode === 'queue' ? (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -803,7 +967,7 @@ function NewsPageContent() {
                     لا توجد أخبار تطابق هذا الفلتر الآن.
                 </div>
             )}
-            {totalPages > 1 && (
+            {viewMode !== 'priority' && totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-white/5">
                     <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}

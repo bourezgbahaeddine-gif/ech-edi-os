@@ -173,3 +173,73 @@ python -m pytest backend/tests -q
 ```bash
 npx tsc --noEmit
 ```
+
+## R2 — Editorial Priority Queue
+
+تم تنفيذ R2 فقط من Tier 1 لإضافة طابور أولويات تحريرية يجيب عن سؤال:
+"ما الأخبار أو المواضيع التي تحتاج تغطية الآن؟"
+
+### ما تم تنفيذه
+- إضافة endpoint جديد:
+  - `GET /api/v1/news/priority-queue`
+- إضافة view جديد داخل صفحة `/news` باسم:
+  - `الأولوية التحريرية`
+- إضافة عميل API في الواجهة لجلب الطابور وعرضه بدون صفحة جديدة.
+
+### منطق الـ scoring
+يتم حساب `priority_score` تقريبياً من:
+- `importance_score * 0.35`
+- `breaking_bonus = 2` إذا كانت المادة عاجلة
+- `freshness_score` أعلى كلما كانت المادة أحدث
+- `urgency_bonus` بحسب `urgency`
+- `competitor_pressure` إذا توفرت بيانات `competitor_xray_items`
+- `cluster_velocity` إذا توفرت عضوية المادة في `story_clusters`
+
+### حدود التنفيذ الحالية
+- التنفيذ لا يستخدم AI.
+- التنفيذ لا يستخدم Celery.
+- التنفيذ لا يضيف migrations.
+- إذا كانت جداول `competitor_xray_items` أو `story_cluster_members` غير متاحة أو كانت فارغة، يرجع endpoint نتائج بدون كسر ويضع هذه الإشارات بقيمة صفرية.
+- الربط الحالي مع `competitor_xray_items` يعتمد على `matched_article_id` المتاح فعلياً.
+- `cluster_velocity` يعتمد على حجم العنقود القصصي الحالي وليس على time-series منفصلة.
+
+### التصفية الحالية
+- الحالات الأساسية المشمولة:
+  - `candidate`
+  - `approved`
+  - `approved_handoff`
+  - `draft_generated`
+  - `ready_for_chief_approval`
+  - `ready_for_manual_publish`
+- افتراضياً لا تظهر:
+  - `published`
+  - `social_packaged`
+  - `archived`
+- يمكن السماح بالحالات المنشورة فقط عند تمرير:
+  - `include_published=true`
+
+### أين يظهر في الواجهة
+- داخل `/news`
+- عبر tab جديد ضمن نفس الصفحة
+- بدون تغيير navigation وبدون صفحة مستقلة
+
+### طريقة الاختبار المحلية
+```bash
+python -m compileall backend/app backend/tests
+python -m pytest backend/tests -q
+npx tsc --noEmit
+```
+
+### أوامر تحقق السيرفر
+```bash
+cd ~/ech-edi-os
+git pull origin production-hardening-fixes-3e6ea
+docker-compose -f docker-compose.ssh.yml -p ech-swarm up -d --build backend frontend
+docker-compose -f docker-compose.ssh.yml -p ech-swarm restart backend frontend
+curl -sS http://127.0.0.1:8000/health
+```
+
+ثم بعد تسجيل الدخول:
+```http
+GET /api/v1/news/priority-queue?hours=24&limit=20
+```
