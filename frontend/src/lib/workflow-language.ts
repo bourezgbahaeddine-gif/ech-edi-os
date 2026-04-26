@@ -14,6 +14,7 @@ export function getWorkflowStatusLabel(status: string | null | undefined): strin
     if (value === 'approval_request_with_reservations') return 'اعتماد بتحفظات';
     if (value === 'ready_for_manual_publish') return 'جاهز للنشر اليدوي';
     if (value === 'published') return 'منشور';
+    if (value === 'social_packaged') return 'حزمة السوشيال جاهزة';
     if (value === 'rejected') return 'مرفوض';
     return status || 'غير محدد';
 }

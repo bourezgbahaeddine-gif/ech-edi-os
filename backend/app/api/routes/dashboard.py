@@ -119,7 +119,9 @@ async def get_dashboard_stats(
         select(func.count(Article.id)).where(Article.status == NewsStatus.REJECTED)
     )
     published = await db.execute(
-        select(func.count(Article.id)).where(Article.status == NewsStatus.PUBLISHED)
+        select(func.count(Article.id)).where(
+            Article.status.in_([NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED])
+        )
     )
     breaking = await db.execute(
         select(func.count(Article.id)).where(
@@ -1031,7 +1033,13 @@ async def dashboard_notifications(
             select(Article)
             .where(
                 and_(
-                    Article.status.in_([NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.PUBLISHED]),
+                    Article.status.in_(
+                        [
+                            NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                            NewsStatus.PUBLISHED,
+                            NewsStatus.SOCIAL_PACKAGED,
+                        ]
+                    ),
                     Article.updated_at >= now - timedelta(hours=24),
                 )
             )

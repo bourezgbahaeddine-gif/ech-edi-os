@@ -212,7 +212,11 @@ async def list_articles(
         try:
             selected_status = NewsStatus(status)
             filters.append(Article.status == selected_status)
-            if selected_status not in {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED}:
+            if selected_status not in {
+                NewsStatus.PUBLISHED,
+                NewsStatus.SOCIAL_PACKAGED,
+                NewsStatus.ARCHIVED,
+            }:
                 filters.append(func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff)
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
@@ -222,6 +226,7 @@ async def list_articles(
         filters.append(
             or_(
                 Article.status == NewsStatus.PUBLISHED,
+                Article.status == NewsStatus.SOCIAL_PACKAGED,
                 func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
             )
         )

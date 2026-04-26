@@ -45,7 +45,12 @@ STATE_TRANSITIONS: dict[NewsStatus, set[NewsStatus]] = {
         NewsStatus.REJECTED,
     },
     NewsStatus.READY_FOR_MANUAL_PUBLISH: {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED},
-    NewsStatus.PUBLISHED: {NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.ARCHIVED},
+    NewsStatus.PUBLISHED: {
+        NewsStatus.READY_FOR_MANUAL_PUBLISH,
+        NewsStatus.SOCIAL_PACKAGED,
+        NewsStatus.ARCHIVED,
+    },
+    NewsStatus.SOCIAL_PACKAGED: {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED},
     # Reopening rejected content into handoff is allowed only when the shared handoff
     # governance gates pass.
     NewsStatus.REJECTED: {NewsStatus.APPROVED_HANDOFF},

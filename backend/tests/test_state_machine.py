@@ -24,6 +24,18 @@ def test_valid_transition_published_to_ready_for_manual_publish() -> None:
     assert can_transition(NewsStatus.PUBLISHED, NewsStatus.READY_FOR_MANUAL_PUBLISH)
 
 
+def test_valid_transition_published_to_social_packaged() -> None:
+    assert can_transition(NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED)
+
+
+def test_valid_transition_social_packaged_to_published() -> None:
+    assert can_transition(NewsStatus.SOCIAL_PACKAGED, NewsStatus.PUBLISHED)
+
+
+def test_valid_transition_social_packaged_to_archived() -> None:
+    assert can_transition(NewsStatus.SOCIAL_PACKAGED, NewsStatus.ARCHIVED)
+
+
 def test_valid_transition_draft_generated_to_ready_for_manual_publish() -> None:
     assert can_transition(NewsStatus.DRAFT_GENERATED, NewsStatus.READY_FOR_MANUAL_PUBLISH)
 

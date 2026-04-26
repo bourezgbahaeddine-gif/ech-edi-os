@@ -31,6 +31,7 @@ class NewsStatus(str, enum.Enum):
     READY_FOR_MANUAL_PUBLISH = "ready_for_manual_publish"
     REJECTED = "rejected"
     PUBLISHED = "published"
+    SOCIAL_PACKAGED = "social_packaged"
     ARCHIVED = "archived"
 
 

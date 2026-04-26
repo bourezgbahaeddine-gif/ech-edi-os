@@ -138,6 +138,7 @@ class Settings(BaseSettings):
     published_monitor_fetch_timeout: int = 12
     published_monitor_alert_threshold: int = 75
     published_monitor_max_concurrent_tasks: int = 2
+    social_package_enabled: bool = False
     event_reminders_enabled: bool = True
     event_reminders_interval_minutes: int = 15
     time_integrity_cleanup_enabled: bool = False
@@ -235,7 +236,6 @@ class Settings(BaseSettings):
     editorial_require_local_signal: bool = True
     editorial_desk_include_pre_candidate: bool = True
     editorial_direct_publish_enabled: bool = False
-    social_package_enabled: bool = False
     editorial_sensitive_categories: str = "politics,international,health,society,environment"
     editorial_sensitive_urgency_levels: str = "high,breaking"
     editorial_sensitive_importance_threshold: int = 8

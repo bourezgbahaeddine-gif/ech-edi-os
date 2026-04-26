@@ -35,6 +35,7 @@ celery_app.conf.update(
         "app.queue.tasks.pipeline_tasks.run_scribe_batch": {"queue": "ai_scribe"},
         "app.queue.tasks.pipeline_tasks.run_trends_scan": {"queue": "ai_trends"},
         "app.queue.tasks.pipeline_tasks.run_published_monitor_scan": {"queue": "ai_quality"},
+        "app.queue.tasks.pipeline_tasks.run_social_package_job": {"queue": "ai_quality"},
         "app.queue.tasks.pipeline_tasks.run_document_intel_extract_job": {"queue": "ai_quality"},
         "app.queue.tasks.pipeline_tasks.run_script_generate_job": {"queue": "ai_scripts"},
         "app.queue.tasks.pipeline_tasks.run_echorouk_archive_backfill": {"queue": "ai_scripts"},

@@ -1794,6 +1794,7 @@ async def process_article(
                         "actionable_fixes": audit.get("actionable_fixes", []),
                     },
                 )
+            article.published_at = datetime.utcnow()
             await _transition_article_status(
                 db=db,
                 article=article,
@@ -1803,7 +1804,6 @@ async def process_article(
                 reason=f"{current_user.role.value}_override",
                 details={"article_id": article_id},
             )
-            article.published_at = datetime.utcnow()
             await bump_keyword_interactions(extract_keywords(article.title_ar or article.original_title), weight=3)
         else:
             await _transition_article_status(
@@ -1982,7 +1982,15 @@ async def social_approved_feed(
     _require_roles(current_user, {UserRole.director, UserRole.editor_chief, UserRole.social_media})
     rows = await db.execute(
         select(Article)
-        .where(Article.status.in_([NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.PUBLISHED]))
+        .where(
+            Article.status.in_(
+                [
+                    NewsStatus.READY_FOR_MANUAL_PUBLISH,
+                    NewsStatus.PUBLISHED,
+                    NewsStatus.SOCIAL_PACKAGED,
+                ]
+            )
+        )
         .order_by(Article.updated_at.desc(), Article.id.desc())
         .limit(max(1, min(limit, 200)))
     )

@@ -290,6 +290,7 @@ function NewsPageContent() {
         'approved',
         'rejected',
         'published',
+        'social_packaged',
     ];
     const categories = ['', 'politics', 'economy', 'sports', 'technology', 'local_algeria', 'international', 'culture', 'society', 'health'];
 
@@ -308,6 +309,7 @@ function NewsPageContent() {
             approved: 'مقبول',
             rejected: 'مرفوض',
             published: 'منشور',
+            social_packaged: 'حزمة السوشيال جاهزة',
             archived: 'مؤرشف',
         };
         return labels[s] || status;
@@ -344,6 +346,9 @@ function NewsPageContent() {
         if (normalizedStatus === 'published') {
             return 'هذه المادة منشورة ويمكن الرجوع إلى تفاصيلها أو استثمارها في السوشيال.';
         }
+        if (normalizedStatus === 'social_packaged') {
+            return 'هذه المادة منشورة وتم تجهيز حزمة السوشيال لها مع بقاء المراجعة البشرية مطلوبة.';
+        }
         if (normalizedStatus === 'rejected') {
             return 'تم رفض هذه المادة وتحتاج مراجعة السبب قبل إعادة العمل عليها.';
         }
@@ -370,6 +375,11 @@ function NewsPageContent() {
         }
         if (normalizedStatus === 'published') {
             return { label: 'افتح التفاصيل', href: `/news/${article.id}` };
+        }
+        if (normalizedStatus === 'social_packaged') {
+            return isSocialRole
+                ? { label: 'راجع حزمة السوشيال', href: '/editorial' }
+                : { label: 'افتح التفاصيل', href: `/news/${article.id}` };
         }
         return { label: 'افتح المادة', href: `/news/${article.id}` };
     };

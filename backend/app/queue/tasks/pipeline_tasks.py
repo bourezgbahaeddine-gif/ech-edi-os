@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import traceback
+from datetime import datetime
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
@@ -10,6 +12,7 @@ import structlog
 from celery import Task
 from sqlalchemy import select
 
+from app.agents.social_package_agent import social_package_agent
 from app.agents.router import router_agent
 from app.agents.scout import scout_agent
 from app.agents.scribe import scribe_agent
@@ -17,10 +20,11 @@ from app.agents.trend_radar import trend_radar_agent
 from app.agents.published_monitor import published_content_monitor_agent
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models import JobRun
+from app.models import Article, JobRun, NewsStatus, SocialPost, SocialTask
 from app.msi.service import msi_monitor_service
 from app.queue.async_runtime import run_async
 from app.queue.celery_app import celery_app
+from app.services.digital_team_service import digital_team_service
 from app.services.document_intel_job_storage import document_intel_job_storage
 from app.services.document_intel_service import document_intel_service
 from app.services.document_intel_workspace_service import document_intel_workspace_service
@@ -36,6 +40,8 @@ DEFAULT_TASK_SOFT_LIMIT_SEC = 120
 DEFAULT_TASK_HARD_LIMIT_SEC = 180
 ARCHIVE_TASK_SOFT_LIMIT_SEC = 900
 ARCHIVE_TASK_HARD_LIMIT_SEC = 1200
+SOCIAL_PACKAGE_DEFAULT_PLATFORMS = ("facebook", "x", "instagram", "tiktok", "push")
+HASHTAG_RE = re.compile(r"(?:^|\s)#([^\s#]+)")
 
 
 async def _load_job(job_id: str) -> JobRun:
@@ -162,6 +168,139 @@ async def _run_published_monitor(job: JobRun) -> dict:
         limit=payload.get("limit"),
     )
     return {"report": report}
+
+
+def _normalize_social_platforms(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return list(SOCIAL_PACKAGE_DEFAULT_PLATFORMS)
+    normalized: list[str] = []
+    for item in raw:
+        text = str(item or "").strip().lower()
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized or list(SOCIAL_PACKAGE_DEFAULT_PLATFORMS)
+
+
+def _extract_hashtags(raw: str) -> list[str]:
+    hashtags: list[str] = []
+    for match in HASHTAG_RE.findall(raw or ""):
+        token = match.strip()
+        if token and token not in hashtags:
+            hashtags.append(token)
+    return hashtags
+
+
+async def _run_social_package(job: JobRun) -> dict:
+    payload = job.payload_json or {}
+    article_id = int(payload.get("article_id") or job.entity_id or 0)
+    if article_id <= 0:
+        raise RuntimeError("article_id_missing")
+
+    platforms = _normalize_social_platforms(payload.get("platforms"))
+    actor_username = (job.actor_username or "system").strip() or "system"
+
+    async with async_session() as db:
+        article_row = await db.execute(select(Article).where(Article.id == article_id))
+        article = article_row.scalar_one_or_none()
+        if article is None:
+            raise RuntimeError("article_not_found")
+
+        package_payload = await social_package_agent.generate_social_package(
+            db,
+            article_id=article_id,
+            platforms=platforms,
+        )
+        if not package_payload.get("enabled"):
+            logger.info(
+                "social_package_generation_skipped_feature_disabled",
+                article_id=article_id,
+                job_id=str(job.id),
+            )
+            return package_payload
+
+        variants = package_payload.get("variants") or {}
+        dedupe_key = f"article:{article_id}:social_package"
+        task_row = await db.execute(select(SocialTask).where(SocialTask.dedupe_key == dedupe_key))
+        task = task_row.scalar_one_or_none()
+        if task is None:
+            task = SocialTask(
+                channel="news",
+                platform="all",
+                task_type="article_social_package",
+                title=(article.title_ar or article.original_title or f"Article #{article.id}")[:512],
+                brief=(article.summary or article.original_title or "")[:4000] or None,
+                status="review",
+                priority=5 if bool(article.is_breaking) else 3,
+                due_at=datetime.utcnow(),
+                article_id=article.id,
+                dedupe_key=dedupe_key,
+                created_by_username=actor_username,
+                updated_by_username=actor_username,
+            )
+            db.add(task)
+            await db.flush()
+
+        posts_row = await db.execute(select(SocialPost).where(SocialPost.task_id == task.id))
+        existing_posts = {str(post.platform or "").lower(): post for post in posts_row.scalars().all()}
+
+        created_platforms: list[str] = []
+        created_post_ids: list[int] = []
+        for platform in platforms:
+            variant_text = str(variants.get(platform) or "").strip()
+            if not variant_text or platform in existing_posts:
+                continue
+            post = SocialPost(
+                task_id=task.id,
+                channel="news",
+                platform=platform,
+                content_text=variant_text,
+                hashtags=_extract_hashtags(variant_text),
+                media_urls=[],
+                status="ready",
+                created_by_username=actor_username,
+                updated_by_username=actor_username,
+            )
+            db.add(post)
+            await db.flush()
+            await digital_team_service.create_post_version(
+                db,
+                post=post,
+                version_type="generated",
+                note="auto_social_package",
+                actor=None,
+            )
+            created_platforms.append(platform)
+            created_post_ids.append(int(post.id))
+            existing_posts[platform] = post
+
+        task.updated_by_username = actor_username
+        task.updated_at = datetime.utcnow()
+        await digital_team_service.refresh_task_post_stats(db, task.id)
+
+        status_updated = False
+        if article.status == NewsStatus.PUBLISHED and variants:
+            article.status = NewsStatus.SOCIAL_PACKAGED
+            status_updated = True
+
+        await db.commit()
+        result = {
+            "article_id": article_id,
+            "task_id": int(task.id),
+            "platforms": platforms,
+            "created_platforms": created_platforms,
+            "created_post_ids": created_post_ids,
+            "status_updated": status_updated,
+            "variants": variants,
+        }
+        logger.info(
+            "social_package_generation_completed",
+            article_id=article_id,
+            job_id=str(job.id),
+            task_id=int(task.id),
+            created_platforms=created_platforms,
+            status_updated=status_updated,
+        )
+        return result
 
 
 async def _run_document_intel_extract(job: JobRun) -> dict:
@@ -365,6 +504,35 @@ def run_published_monitor_scan(self: Task, job_id: str) -> dict:
                 job_id,
                 task_name="published_monitor_scan",
                 runner=_run_published_monitor,
+            )
+        )
+        run_async(_complete(job_id, result))
+        return {"ok": True}
+    except Exception as exc:  # noqa: BLE001
+        tb = traceback.format_exc()
+        final = int(getattr(self.request, "retries", 0)) >= int(getattr(self, "max_retries", 3))
+        run_async(_fail(job_id, str(exc), tb, final))
+        raise
+    finally:
+        structlog.contextvars.clear_contextvars()
+
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=(TimeoutError, ConnectionError),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+    soft_time_limit=DEFAULT_TASK_SOFT_LIMIT_SEC,
+    time_limit=DEFAULT_TASK_HARD_LIMIT_SEC,
+)
+def run_social_package_job(self: Task, job_id: str) -> dict:
+    try:
+        result = run_async(
+            _run_task_with_idempotency(
+                job_id,
+                task_name="social_package_generate",
+                runner=_run_social_package,
             )
         )
         run_async(_complete(job_id, result))
