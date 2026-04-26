@@ -85,7 +85,7 @@ EDITORIAL_PRIORITY_BASE_STATUSES = [
     NewsStatus.READY_FOR_CHIEF_APPROVAL,
     NewsStatus.READY_FOR_MANUAL_PUBLISH,
 ]
-EDITORIAL_PRIORITY_PUBLISHED_STATUSES = [NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED]
+EDITORIAL_PRIORITY_PUBLISHED_STATUSES = [NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED.value]
 EDITORIAL_URGENCY_BONUS = {
     UrgencyLevel.LOW.value: 0.0,
     UrgencyLevel.MEDIUM.value: 0.8,
@@ -201,15 +201,17 @@ async def _expire_stale_breaking_flags(db: AsyncSession) -> None:
     await db.commit()
 
 
-def _priority_queue_statuses(include_published: bool) -> list[NewsStatus]:
+def _priority_queue_statuses(include_published: bool) -> list[NewsStatus | str]:
     statuses = list(EDITORIAL_PRIORITY_BASE_STATUSES)
     if include_published:
         statuses.extend(EDITORIAL_PRIORITY_PUBLISHED_STATUSES)
     return statuses
 
 
-def _db_news_status_value(status: NewsStatus) -> NewsStatus | str:
-    return status.value if status == NewsStatus.SOCIAL_PACKAGED else status
+def _db_news_status_value(status: NewsStatus | str) -> NewsStatus | str:
+    if isinstance(status, NewsStatus):
+        return status.value if status == NewsStatus.SOCIAL_PACKAGED else status
+    return status
 
 
 def _safe_article_display_title(article: Article) -> str:
@@ -270,7 +272,10 @@ def _build_priority_queue_items(
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
     current_time = now or datetime.utcnow()
-    allowed_statuses = {status.value for status in _priority_queue_statuses(include_published)}
+    allowed_statuses = {
+        status.value if isinstance(status, NewsStatus) else str(status)
+        for status in _priority_queue_statuses(include_published)
+    }
     competitor_map = competitor_map or {}
     cluster_map = cluster_map or {}
     items: list[dict[str, Any]] = []
