@@ -152,6 +152,8 @@ export interface SourceHealthApplyResponse {
 export interface ArticleBrief {
     id: number;
     title_ar: string | null;
+    title?: string | null;
+    display_title?: string | null;
     original_title: string;
     original_url: string | null;
     source_name: string | null;

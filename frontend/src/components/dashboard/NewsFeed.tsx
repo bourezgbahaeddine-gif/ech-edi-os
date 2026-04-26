@@ -11,8 +11,12 @@ interface NewsFeedProps {
     title?: string;
 }
 
+function getArticleDisplayTitle(article: Pick<ArticleBrief, 'title_ar' | 'title' | 'original_title' | 'display_title'>) {
+    return article.title_ar || article.title || article.original_title || article.display_title || 'بدون عنوان';
+}
+
 function ArticleCard({ article }: { article: ArticleBrief }) {
-    const displayTitle = article.title_ar || article.original_title;
+    const displayTitle = getArticleDisplayTitle(article);
     const freshBreaking = isFreshBreaking(article.is_breaking, article.crawled_at);
 
     return (

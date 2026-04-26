@@ -41,6 +41,10 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
     return fallback;
 }
 
+function getArticleDisplayTitle(article: Pick<ArticleBrief, 'title_ar' | 'title' | 'original_title' | 'display_title'>): string {
+    return article.title_ar || article.title || article.original_title || article.display_title || 'بدون عنوان';
+}
+
 function NewsPageContent() {
     const queryClient = useQueryClient();
     const searchParams = useSearchParams();
@@ -839,7 +843,7 @@ function NewsPageContent() {
                             return (
                                 <div key={article.id} className="h-full">
                                     <WorkflowCard
-                                        title={article.title_ar || article.original_title}
+                                        title={getArticleDisplayTitle(article)}
                                         subtitle={`المصدر: ${article.source_name || 'غير محدد'}`}
                                         meta={
                                             <div className="flex flex-wrap items-center gap-2 text-slate-400">
@@ -925,7 +929,7 @@ function NewsPageContent() {
                                         return (
                                             <tr key={article.id} className="border-t border-white/5 text-slate-200">
                                                 <td className="px-4 py-3 align-top">
-                                                    <div className="font-semibold text-white">{truncate(article.title_ar || article.original_title, 90)}</div>
+                                                    <div className="font-semibold text-white">{truncate(getArticleDisplayTitle(article), 90)}</div>
                                                     <div className="mt-1 text-[11px] text-slate-500">{formatRelativeTime(article.created_at || article.crawled_at)}</div>
                                                 </td>
                                                 <td className="px-4 py-3 align-top">

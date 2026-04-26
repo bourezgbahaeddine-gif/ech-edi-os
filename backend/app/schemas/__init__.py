@@ -6,7 +6,7 @@ Request/Response schemas for the API layer.
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, computed_field
 
 
 # ── Source Schemas ──
@@ -75,6 +75,17 @@ class SourceUpdate(BaseModel):
 
 # ── Article Schemas ──
 
+def _safe_article_display_title(
+    title_ar: Optional[str],
+    original_title: Optional[str],
+    original_url: Optional[str],
+) -> str:
+    for candidate in (title_ar, original_title, original_url):
+        if candidate and str(candidate).strip():
+            return str(candidate).strip()
+    return "بدون عنوان"
+
+
 class ArticleResponse(BaseModel):
     id: int
     unique_hash: str
@@ -106,6 +117,16 @@ class ArticleResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @computed_field(return_type=str)
+    @property
+    def display_title(self) -> str:
+        return _safe_article_display_title(self.title_ar, self.original_title, self.original_url)
+
+    @computed_field(return_type=str)
+    @property
+    def title(self) -> str:
+        return self.display_title
+
     class Config:
         from_attributes = True
 
@@ -125,6 +146,16 @@ class ArticleBrief(BaseModel):
     crawled_at: datetime
     created_at: datetime
     summary: Optional[str] = None
+
+    @computed_field(return_type=str)
+    @property
+    def display_title(self) -> str:
+        return _safe_article_display_title(self.title_ar, self.original_title, self.original_url)
+
+    @computed_field(return_type=str)
+    @property
+    def title(self) -> str:
+        return self.display_title
 
     class Config:
         from_attributes = True

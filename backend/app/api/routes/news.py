@@ -212,6 +212,13 @@ def _db_news_status_value(status: NewsStatus) -> NewsStatus | str:
     return status.value if status == NewsStatus.SOCIAL_PACKAGED else status
 
 
+def _safe_article_display_title(article: Article) -> str:
+    for candidate in (article.title_ar, article.original_title, article.original_url):
+        if candidate and str(candidate).strip():
+            return str(candidate).strip()
+    return "بدون عنوان"
+
+
 def _priority_recommended_action(status: str) -> str:
     value = (status or "").lower()
     if value == NewsStatus.CANDIDATE.value:
@@ -319,7 +326,7 @@ def _build_priority_queue_items(
         items.append(
             {
                 "article_id": int(article.id),
-                "title": article.title_ar or article.original_title,
+                "title": _safe_article_display_title(article),
                 "status": status_value,
                 "category": article.category.value if isinstance(article.category, NewsCategory) else article.category,
                 "source_name": article.source_name,
