@@ -439,77 +439,92 @@ async def lifespan(app: FastAPI):
         )
 
     if settings.auto_trends_enabled:
-        trend_interval_seconds = max(300, settings.trend_radar_interval_minutes * 60)
-        _trends_task = asyncio.create_task(
-            _periodic_loop(
-                "trends",
-                trend_interval_seconds,
-                _run_trends_once,
+        if settings.web_enable_trends_loop:
+            trend_interval_seconds = max(300, settings.trend_radar_interval_minutes * 60)
+            _trends_task = asyncio.create_task(
+                _periodic_loop(
+                    "trends",
+                    trend_interval_seconds,
+                    _run_trends_once,
+                )
             )
-        )
-        logger.info(
-            "auto_trends_enabled",
-            trend_interval_minutes=settings.trend_radar_interval_minutes,
-        )
+            logger.info(
+                "auto_trends_enabled",
+                trend_interval_minutes=settings.trend_radar_interval_minutes,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="trends")
 
     if settings.published_monitor_enabled:
-        published_monitor_interval_seconds = max(300, settings.published_monitor_interval_minutes * 60)
-        _published_monitor_task = asyncio.create_task(
-            _periodic_loop(
-                "published_monitor",
-                published_monitor_interval_seconds,
-                _run_published_monitor_once,
+        if settings.web_enable_published_monitor_loop:
+            published_monitor_interval_seconds = max(300, settings.published_monitor_interval_minutes * 60)
+            _published_monitor_task = asyncio.create_task(
+                _periodic_loop(
+                    "published_monitor",
+                    published_monitor_interval_seconds,
+                    _run_published_monitor_once,
+                )
             )
-        )
-        logger.info(
-            "published_monitor_enabled",
-            interval_minutes=settings.published_monitor_interval_minutes,
-            feed_url=settings.published_monitor_feed_url,
-        )
+            logger.info(
+                "published_monitor_enabled",
+                interval_minutes=settings.published_monitor_interval_minutes,
+                feed_url=settings.published_monitor_feed_url,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="published_monitor")
 
     if settings.competitor_xray_enabled:
-        _competitor_xray_task = asyncio.create_task(
-            _periodic_loop(
-                "competitor_xray",
-                max(600, settings.competitor_xray_interval_minutes * 60),
-                _run_competitor_xray_once,
+        if settings.web_enable_competitor_xray_loop:
+            _competitor_xray_task = asyncio.create_task(
+                _periodic_loop(
+                    "competitor_xray",
+                    max(600, settings.competitor_xray_interval_minutes * 60),
+                    _run_competitor_xray_once,
+                )
             )
-        )
-        logger.info(
-            "competitor_xray_enabled",
-            interval_minutes=settings.competitor_xray_interval_minutes,
-            limit_per_source=settings.competitor_xray_limit_per_source,
-            hours_window=settings.competitor_xray_hours_window,
-        )
+            logger.info(
+                "competitor_xray_enabled",
+                interval_minutes=settings.competitor_xray_interval_minutes,
+                limit_per_source=settings.competitor_xray_limit_per_source,
+                hours_window=settings.competitor_xray_hours_window,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="competitor_xray")
 
     if settings.event_reminders_enabled:
-        _event_reminders_task = asyncio.create_task(
-            _periodic_loop(
-                "event_reminders",
-                max(300, settings.event_reminders_interval_minutes * 60),
-                _run_event_reminders_once,
+        if settings.web_enable_event_reminders_loop:
+            _event_reminders_task = asyncio.create_task(
+                _periodic_loop(
+                    "event_reminders",
+                    max(300, settings.event_reminders_interval_minutes * 60),
+                    _run_event_reminders_once,
+                )
             )
-        )
-        logger.info(
-            "event_reminders_enabled",
-            interval_minutes=settings.event_reminders_interval_minutes,
-        )
+            logger.info(
+                "event_reminders_enabled",
+                interval_minutes=settings.event_reminders_interval_minutes,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="event_reminders")
 
     if settings.digital_team_auto_generation_enabled:
-        _digital_generation_task = asyncio.create_task(
-            _periodic_loop(
-                "digital_generation",
-                max(300, settings.digital_team_auto_generation_interval_minutes * 60),
-                _run_digital_generation_once,
+        if settings.web_enable_digital_generation_loop:
+            _digital_generation_task = asyncio.create_task(
+                _periodic_loop(
+                    "digital_generation",
+                    max(300, settings.digital_team_auto_generation_interval_minutes * 60),
+                    _run_digital_generation_once,
+                )
             )
-        )
-        logger.info(
-            "digital_team_auto_generation_enabled",
-            interval_minutes=settings.digital_team_auto_generation_interval_minutes,
-            hours_ahead=settings.digital_team_auto_generation_hours_ahead,
-            include_events=settings.digital_team_auto_include_events,
-            include_breaking=settings.digital_team_auto_include_breaking,
-        )
+            logger.info(
+                "digital_team_auto_generation_enabled",
+                interval_minutes=settings.digital_team_auto_generation_interval_minutes,
+                hours_ahead=settings.digital_team_auto_generation_hours_ahead,
+                include_events=settings.digital_team_auto_include_events,
+                include_breaking=settings.digital_team_auto_include_breaking,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="digital_generation")
 
     if settings.time_integrity_cleanup_enabled:
         _time_integrity_cleanup_task = asyncio.create_task(
