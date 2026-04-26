@@ -66,7 +66,13 @@ async def rss_for_source(
     query = select(Article).where(Article.source_id == source_id)
     if status:
         try:
-            query = query.where(Article.status == NewsStatus(status))
+            selected_status = NewsStatus(status)
+            status_filter = (
+                selected_status.value
+                if selected_status == NewsStatus.SOCIAL_PACKAGED
+                else selected_status
+            )
+            query = query.where(Article.status == status_filter)
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
     if category:

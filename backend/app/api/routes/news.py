@@ -208,6 +208,10 @@ def _priority_queue_statuses(include_published: bool) -> list[NewsStatus]:
     return statuses
 
 
+def _db_news_status_value(status: NewsStatus) -> NewsStatus | str:
+    return status.value if status == NewsStatus.SOCIAL_PACKAGED else status
+
+
 def _priority_recommended_action(status: str) -> str:
     value = (status or "").lower()
     if value == NewsStatus.CANDIDATE.value:
@@ -529,7 +533,7 @@ async def priority_queue(
     """Return editorial priority queue ranked by urgency, freshness, and available signals."""
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=hours)
-    allowed_statuses = _priority_queue_statuses(include_published)
+    allowed_statuses = [_db_news_status_value(item) for item in _priority_queue_statuses(include_published)]
 
     filters = [
         Article.status.in_(allowed_statuses),
@@ -717,7 +721,8 @@ async def semantic_search(
     )
     if status:
         try:
-            stmt = stmt.where(Article.status == NewsStatus(status))
+            selected_status = NewsStatus(status)
+            stmt = stmt.where(Article.status == _db_news_status_value(selected_status))
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
     else:
