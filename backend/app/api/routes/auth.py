@@ -288,7 +288,7 @@ async def login(
 
     _set_access_cookie(response, token)
     logger.info("login_success", username=user.username, role=user.role.value)
-    return TokenResponse(access_token=None, user=UserProfile.model_validate(user))
+    return TokenResponse(access_token=token, user=UserProfile.model_validate(user))
 
 
 # -- Current user --
