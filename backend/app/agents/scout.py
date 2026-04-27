@@ -280,13 +280,16 @@ class ScoutAgent:
             limit = max(1, min(int(settings.freshrss_feed_limit), int(settings.scout_max_new_per_run)))
         except (TypeError, ValueError):
             limit = max(1, int(settings.scout_max_new_per_run))
-        if not feed_url or "nb=" in feed_url:
+        if not feed_url:
             return feed_url
 
         parsed = urlparse(feed_url)
+        path = parsed.path or ""
+        if parsed.hostname == "freshrss" and path.startswith("/p/i"):
+            path = path.replace("/p/i", "/i", 1)
         params = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        params["nb"] = str(limit)
-        return urlunparse(parsed._replace(query=urlencode(params)))
+        params.setdefault("nb", str(limit))
+        return urlunparse(parsed._replace(path=path, query=urlencode(params)))
 
     @staticmethod
     def _normalized_host(url: str) -> str:

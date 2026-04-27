@@ -232,7 +232,7 @@ class Settings(BaseSettings):
 
     # FreshRSS / RSS-Bridge
     scout_use_freshrss: bool = True
-    freshrss_feed_url: str = "http://freshrss:80/p/i/?a=rss&state=all"
+    freshrss_feed_url: str = "http://freshrss:80/i/?a=rss&state=all"
     freshrss_feed_limit: int = 1000
     rssbridge_base_url: str = "http://rssbridge:80"
     rssbridge_enabled: bool = True
