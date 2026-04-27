@@ -126,8 +126,16 @@ function NewsPageContent() {
                 is_breaking: isBreaking === null ? undefined : isBreaking,
                 local_first: true,
             };
-            const response = await newsApi.list(baseParams);
             const hasActiveFilters = Boolean(status || category || debouncedSearch || isBreaking !== null);
+            let response;
+            try {
+                response = await newsApi.list(baseParams);
+            } catch (error) {
+                if (!hasActiveFilters) {
+                    return newsApi.list({ ...baseParams, status: 'new' });
+                }
+                throw error;
+            }
             if (!hasActiveFilters && (response.data?.items?.length || 0) === 0) {
                 return newsApi.list({ ...baseParams, status: 'new' });
             }
