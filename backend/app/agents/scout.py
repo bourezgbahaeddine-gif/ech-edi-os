@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from types import SimpleNamespace
 from typing import Optional, Iterable
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import feedparser
 import aiohttp
@@ -227,15 +227,21 @@ class ScoutAgent:
         session: aiohttp.ClientSession,
     ) -> None:
         """Fetch consolidated feed from FreshRSS."""
-        feed_url = settings.freshrss_feed_url
+        feed_url = self._freshrss_feed_url()
         feed = await self._parse_feed(feed_url, session=session)
         if not feed or not feed.entries:
             logger.warning("freshrss_feed_empty", feed_url=feed_url)
             return
 
-        logger.info("freshrss_fetch_started", entries=len(feed.entries), feed_url=feed_url)
         max_new_per_run = settings.scout_max_new_per_run
         per_source_cap = max(1, getattr(self, "_freshrss_per_source_cap", settings.scout_freshrss_max_per_source_per_run))
+        logger.info(
+            "freshrss_fetch_started",
+            entries=len(feed.entries),
+            feed_url=feed_url,
+            max_new_per_run=max_new_per_run,
+            per_source_cap=per_source_cap,
+        )
         source_new_counts: dict[str, int] = {}
         for entry in feed.entries:
             if stats["new"] >= max_new_per_run:
@@ -265,6 +271,22 @@ class ScoutAgent:
                 stats["errors"] += 1
                 logger.warning("freshrss_entry_process_error", source=source_name, error=str(e))
         await db.commit()
+
+    @staticmethod
+    def _freshrss_feed_url() -> str:
+        """Request a larger FreshRSS page without requiring operators to edit URL params."""
+        feed_url = (settings.freshrss_feed_url or "").strip()
+        try:
+            limit = max(1, min(int(settings.freshrss_feed_limit), int(settings.scout_max_new_per_run)))
+        except (TypeError, ValueError):
+            limit = max(1, int(settings.scout_max_new_per_run))
+        if not feed_url or "nb=" in feed_url:
+            return feed_url
+
+        parsed = urlparse(feed_url)
+        params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        params["nb"] = str(limit)
+        return urlunparse(parsed._replace(query=urlencode(params)))
 
     @staticmethod
     def _normalized_host(url: str) -> str:

@@ -18,6 +18,7 @@ from app.agents.scout import scout_agent
 from app.agents.scribe import scribe_agent
 from app.agents.trend_radar import trend_radar_agent
 from app.agents.published_monitor import published_content_monitor_agent
+from app.core.config import get_settings
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models import Article, JobRun, NewsStatus, SocialPost, SocialTask
@@ -36,6 +37,7 @@ from app.services.task_execution_service import execute_with_task_idempotency
 from app.simulator.service import audience_simulation_service
 
 logger = get_logger("queue.pipeline_tasks")
+settings = get_settings()
 DEFAULT_TASK_SOFT_LIMIT_SEC = 120
 DEFAULT_TASK_HARD_LIMIT_SEC = 180
 ARCHIVE_TASK_SOFT_LIMIT_SEC = 900
@@ -124,7 +126,7 @@ async def _run_router_batch(job: JobRun) -> dict:
 async def _run_scout_batch(_: JobRun) -> dict:
     async with async_session() as db:
         stats = await scout_agent.run(db)
-        router_stats = await router_agent.process_batch(db)
+        router_stats = await router_agent.process_batch(db, limit=settings.router_batch_limit)
     return {"scout": stats, "router": router_stats}
 
 

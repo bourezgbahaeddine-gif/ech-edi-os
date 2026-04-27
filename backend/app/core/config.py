@@ -204,9 +204,9 @@ class Settings(BaseSettings):
     queue_sla_failure_rate_threshold_percent: float = 25.0
 
     # Router throughput tuning
-    router_batch_limit: int = 120
-    router_source_quota: int = 20
-    router_candidate_source_quota: int = 10
+    router_batch_limit: int = 250
+    router_source_quota: int = 50
+    router_candidate_source_quota: int = 25
     router_rule_min_hits: int = 1
     router_skip_ai_for_non_local_aggregator: bool = True
     router_reject_filters_enabled: bool = True
@@ -231,8 +231,9 @@ class Settings(BaseSettings):
     provider_queue_tier_router: str = "low"
 
     # FreshRSS / RSS-Bridge
-    scout_use_freshrss: bool = False
+    scout_use_freshrss: bool = True
     freshrss_feed_url: str = "http://freshrss:80/p/i/?a=rss&state=all"
+    freshrss_feed_limit: int = 1000
     rssbridge_base_url: str = "http://rssbridge:80"
     rssbridge_enabled: bool = True
 
@@ -257,8 +258,8 @@ class Settings(BaseSettings):
     link_check_timeout_seconds: int = 7
     scout_batch_size: int = 8
     scout_concurrency: int = 8
-    scout_max_new_per_run: int = 250
-    scout_freshrss_max_per_source_per_run: int = 12
+    scout_max_new_per_run: int = 1000
+    scout_freshrss_max_per_source_per_run: int = 60
     scout_max_article_age_hours: int = 72
     scout_max_article_future_minutes: int = 30
     scout_require_timestamp_for_aggregator: bool = True
