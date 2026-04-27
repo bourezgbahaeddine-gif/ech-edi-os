@@ -214,6 +214,23 @@ def _db_news_status_value(status: NewsStatus | str) -> NewsStatus | str:
     return status
 
 
+def _parse_news_status_query(status: str) -> NewsStatus:
+    raw = (status or "").strip()
+    if not raw:
+        raise ValueError("empty status")
+
+    normalized = raw.replace(" ", "_")
+    try:
+        return NewsStatus(normalized.lower())
+    except ValueError:
+        pass
+
+    try:
+        return NewsStatus[normalized.upper()]
+    except KeyError as exc:
+        raise ValueError(raw) from exc
+
+
 def _safe_article_display_title(article: Article) -> str:
     for candidate in (article.title_ar, article.original_title, article.original_url):
         if candidate and str(candidate).strip():
@@ -462,7 +479,7 @@ async def list_articles(
     filters = []
     if status:
         try:
-            selected_status = NewsStatus(status)
+            selected_status = _parse_news_status_query(status)
             selected_status_filter = (
                 selected_status.value
                 if selected_status == NewsStatus.SOCIAL_PACKAGED
@@ -733,7 +750,7 @@ async def semantic_search(
     )
     if status:
         try:
-            selected_status = NewsStatus(status)
+            selected_status = _parse_news_status_query(status)
             stmt = stmt.where(Article.status == _db_news_status_value(selected_status))
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
