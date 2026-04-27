@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import String, select, func, and_, or_, update, desc, case, cast, text
+from sqlalchemy import select, func, and_, or_, update, desc, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.rbac import require_roles
@@ -40,6 +40,7 @@ from app.services.digital_team_service import ChannelScope, digital_team_service
 from app.services.job_queue_service import job_queue_service
 from app.services.time_integrity_service import time_integrity_service
 from app.services.ops_monitor_service import ops_monitor_service
+from app.utils.status_filters import article_status_is_social_packaged
 
 logger = get_logger("api.dashboard")
 DASHBOARD_NEWSROOM_ROLES = (
@@ -61,7 +62,7 @@ settings = get_settings()
 
 
 def _article_status_is_social_packaged():
-    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
+    return article_status_is_social_packaged(Article.status)
 
 
 async def _safe_event_reminder_feed(limit: int) -> list[dict]:

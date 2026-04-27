@@ -10,7 +10,7 @@ from uuid import UUID
 
 import structlog
 from celery import Task
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.agents.social_package_agent import social_package_agent
 from app.agents.router import router_agent
@@ -33,6 +33,7 @@ from app.services.echorouk_archive_service import echorouk_archive_service
 from app.services.job_queue_service import job_queue_service
 from app.services.mil_service import mil_service
 from app.services.script_studio_service import script_studio_service
+from app.services.state_transition_service import state_transition_service
 from app.services.task_execution_service import execute_with_task_idempotency
 from app.simulator.service import audience_simulation_service
 
@@ -281,21 +282,24 @@ async def _run_social_package(job: JobRun) -> dict:
 
         status_updated = False
         if article.status == NewsStatus.PUBLISHED and variants:
-            status_result = await db.execute(
-                text(
-                    """
-                    UPDATE articles
-                    SET status = CAST(:status AS newsstatus), updated_at = :updated_at
-                    WHERE id = :article_id AND status = CAST('PUBLISHED' AS newsstatus)
-                    """
-                ),
-                {
-                    "status": NewsStatus.SOCIAL_PACKAGED.value,
-                    "updated_at": datetime.utcnow(),
-                    "article_id": article.id,
-                },
-            )
-            status_updated = (status_result.rowcount or 0) > 0
+            try:
+                transitioned_article, _ = await state_transition_service.transition_article(
+                    db=db,
+                    article_id=int(article.id),
+                    target=NewsStatus.SOCIAL_PACKAGED,
+                    expected_current=NewsStatus.PUBLISHED,
+                    entity=f"social_package_article:{article.id}",
+                    lock_nowait=False,
+                )
+                transitioned_article.updated_at = datetime.utcnow()
+                status_updated = True
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "social_package_status_transition_skipped",
+                    article_id=article.id,
+                    job_id=str(job.id),
+                    error=str(exc),
+                )
 
         await db.commit()
         result = {

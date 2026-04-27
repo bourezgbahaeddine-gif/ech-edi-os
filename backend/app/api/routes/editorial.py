@@ -8,7 +8,7 @@ from uuid import uuid4
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scribe import scribe_agent
@@ -46,6 +46,7 @@ from app.services.smart_editor_service import smart_editor_service
 from app.services.audit_service import audit_service
 from app.services.state_transition_service import state_transition_service
 from app.services.trend_signal_service import bump_keyword_interactions, extract_keywords
+from app.utils.status_filters import article_status_is_social_packaged
 
 logger = get_logger("api.editorial")
 settings = get_settings()
@@ -53,7 +54,7 @@ router = APIRouter(prefix="/editorial", tags=["Editorial"])
 
 
 def _article_status_is_social_packaged():
-    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
+    return article_status_is_social_packaged(Article.status)
 
 
 class _StrictRequestModel(BaseModel):

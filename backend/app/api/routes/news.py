@@ -11,7 +11,7 @@ import unicodedata
 from urllib.parse import urlparse, urlunparse
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, case, cast, select, func, desc, and_, or_, update
+from sqlalchemy import case, select, func, desc, and_, or_, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,7 @@ from app.models import (
 from app.schemas import ArticleResponse, ArticleBrief, PaginatedResponse
 from app.services.embedding_service import embedding_service
 from app.services.trend_signal_service import bump_keyword_interactions, extract_keywords
+from app.utils.status_filters import article_status_is_social_packaged
 
 router = APIRouter(prefix="/news", tags=["News"])
 settings = get_settings()
@@ -85,7 +86,10 @@ EDITORIAL_PRIORITY_BASE_STATUSES = [
     NewsStatus.READY_FOR_CHIEF_APPROVAL,
     NewsStatus.READY_FOR_MANUAL_PUBLISH,
 ]
-EDITORIAL_PRIORITY_PUBLISHED_STATUSES = [NewsStatus.PUBLISHED, NewsStatus.SOCIAL_PACKAGED.value]
+EDITORIAL_PRIORITY_PUBLISHED_STATUSES = [
+    NewsStatus.PUBLISHED.value,
+    NewsStatus.SOCIAL_PACKAGED.value,
+]
 EDITORIAL_URGENCY_BONUS = {
     UrgencyLevel.LOW.value: 0.0,
     UrgencyLevel.MEDIUM.value: 0.8,
@@ -215,7 +219,7 @@ def _db_news_status_value(status: NewsStatus | str) -> NewsStatus | str:
 
 
 def _article_status_is_social_packaged():
-    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
+    return article_status_is_social_packaged(Article.status)
 
 
 def _article_status_in(statuses: list[NewsStatus | str]):
