@@ -3362,7 +3362,6 @@ async def create_draft(
     article = article_result.scalar_one_or_none()
     if not article:
         raise HTTPException(404, "Article not found")
-    await _assert_publish_gate_and_constitution(db, article_id=article_id, user=current_user)
 
     source_action = payload.source_action or "manual"
     version_result = await db.execute(

@@ -33,6 +33,7 @@ import {
     memoryApi,
     milApi,
     msiApi,
+    newsApi,
     simApi,
     storiesApi,
     sourcesApi,
@@ -2203,11 +2204,31 @@ function WorkspaceDraftsPageContent() {
         onError: (e: any) => setErr(e?.response?.data?.detail || 'تعذر إنشاء مسودة من القصة'),
     });
     const createDraftFromArticle = useMutation({
-        mutationFn: () => editorialApi.handoff(articleNumericId!),
+        mutationFn: async () => {
+            const article = (await newsApi.get(articleNumericId!)).data;
+            const title = cleanText(article.title_ar || article.title || article.original_title || article.display_title || 'بدون عنوان');
+            const sourceText = cleanText(
+                htmlToReadableText(article.body_html || '') ||
+                article.original_content ||
+                article.summary ||
+                article.original_title ||
+                title,
+            );
+            const body = [
+                `<h1>${safeInlineText(title)}</h1>`,
+                `<p>${safeInlineText(sourceText || title).replace(/\n+/g, '</p><p>')}</p>`,
+            ].join('\n');
+            return editorialApi.createDraft(articleNumericId!, {
+                title,
+                body,
+                note: 'newsroom_open_for_editing',
+                source_action: 'newsroom_edit',
+            });
+        },
         onSuccess: (res) => {
             const nextWorkId = res.data?.work_id;
             if (!nextWorkId) {
-                setErr('تم ترشيح الخبر ولكن لم يتم إنشاء Work ID. أعد المحاولة.');
+                setErr('تم إنشاء المسودة لكن لم يتم إنشاء Work ID. أعد المحاولة.');
                 return;
             }
             setWorkId(nextWorkId);
@@ -2218,7 +2239,7 @@ function WorkspaceDraftsPageContent() {
             queryClient.invalidateQueries({ queryKey: ['smart-editor-versions', nextWorkId] });
         },
         onError: (e: any) => {
-            setErr(e?.response?.data?.detail || 'تعذر إنشاء مسودة الخبر. حاول مرة أخرى.');
+            setErr(e?.response?.data?.detail || 'تعذر فتح مسودة تحرير من الخبر. حاول مرة أخرى.');
         },
     });
 
