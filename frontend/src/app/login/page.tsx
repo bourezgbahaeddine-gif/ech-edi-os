@@ -23,9 +23,15 @@ export default function LoginPage() {
 
         try {
             const response = await api.post('/auth/login', { username, password });
-            const { user } = response.data;
+            const { access_token, user } = response.data;
 
-            login(user);
+            if (!access_token || !user) {
+                setError('تعذر إنشاء جلسة مصادقة صالحة. أعد المحاولة.');
+                setIsLoading(false);
+                return;
+            }
+
+            login(user, access_token);
 
         } catch (err: unknown) {
             const detail = axios.isAxiosError(err)

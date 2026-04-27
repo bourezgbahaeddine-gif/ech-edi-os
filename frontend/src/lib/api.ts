@@ -77,7 +77,7 @@ export interface ApiEnvelope<T> {
 function isApiEnvelope(value: unknown): value is ApiEnvelope<unknown> {
     if (!value || typeof value !== 'object') return false;
     const candidate = value as Record<string, unknown>;
-    return 'ok' in candidate && 'data' in candidate && 'error' in candidate && 'meta' in candidate;
+    return 'ok' in candidate && 'data' in candidate && 'error' in candidate;
 }
 
 // ── Types ──

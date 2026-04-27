@@ -115,16 +115,24 @@ function NewsPageContent() {
 
     const { data, isLoading } = useQuery({
         queryKey: ['news', page, status, category, debouncedSearch, isBreaking],
-        queryFn: () => newsApi.list({
-            page,
-            per_page: 20,
-            status: status || undefined,
-            category: category || undefined,
-            search: debouncedSearch || undefined,
-            sort_by: 'created_at',
-            is_breaking: isBreaking === null ? undefined : isBreaking,
-            local_first: true,
-        }),
+        queryFn: async () => {
+            const baseParams = {
+                page,
+                per_page: 20,
+                status: status || undefined,
+                category: category || undefined,
+                search: debouncedSearch || undefined,
+                sort_by: 'created_at',
+                is_breaking: isBreaking === null ? undefined : isBreaking,
+                local_first: true,
+            };
+            const response = await newsApi.list(baseParams);
+            const hasActiveFilters = Boolean(status || category || debouncedSearch || isBreaking !== null);
+            if (!hasActiveFilters && (response.data?.items?.length || 0) === 0) {
+                return newsApi.list({ ...baseParams, status: 'new' });
+            }
+            return response;
+        },
         refetchInterval: () => (Date.now() < liveRefreshUntil ? 2000 : false),
         refetchOnWindowFocus: true,
     });

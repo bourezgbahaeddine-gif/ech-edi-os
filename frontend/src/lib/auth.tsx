@@ -129,9 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!user) router.push('/login');
     }, [isLoading, pathname, router, user]);
 
-    const login = (newUser: AuthUser) => {
-        applyAuthToken(null);
-        dispatch({ type: 'login', payload: { user: newUser, token: null } });
+    const login = (newUser: AuthUser, newToken: string | null = null) => {
+        applyAuthToken(newToken);
+        dispatch({ type: 'login', payload: { user: newUser, token: newToken } });
         router.push(getHomePathByRole(newUser.role));
     };
 
