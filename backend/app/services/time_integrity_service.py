@@ -25,7 +25,11 @@ class TimeIntegrityService:
     _AUTO_ARCHIVE_REASON_PREFIX = "auto_archived:strict_time_guard"
     _AUTO_ARCHIVE_RESTORE_ACTION = "auto_archived_stale_restored"
     _AUTO_ARCHIVE_RESTORE_REASON = "manual_restore_auto_archived_stale"
-    _NON_PUBLISHED_STATUSES = [status for status in NewsStatus if status not in {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED}]
+    _NON_PUBLISHED_STATUSES = [
+        status.value if status == NewsStatus.SOCIAL_PACKAGED else status
+        for status in NewsStatus
+        if status not in {NewsStatus.PUBLISHED, NewsStatus.ARCHIVED}
+    ]
     _CHIEF_STATUSES = [NewsStatus.READY_FOR_CHIEF_APPROVAL, NewsStatus.APPROVAL_REQUEST_WITH_RESERVATIONS]
     _EVENT_TIME = func.coalesce(Article.published_at, Article.crawled_at, Article.created_at)
     _WATCHLIST_DEFAULT_MIN_EVENTS = 10
