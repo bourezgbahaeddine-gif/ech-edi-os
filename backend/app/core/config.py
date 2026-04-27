@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     embedding_vector_dim: int = 256
     embedding_use_real_for_chunks: bool = False
     echorouk_archive_enabled: bool = False
+    web_enable_echorouk_archive_loop: bool = False
     echorouk_archive_source_name: str = "Echorouk Online Archive"
     echorouk_archive_base_url: str = "https://www.echoroukonline.com/"
     echorouk_archive_sections: str = (
@@ -128,6 +129,7 @@ class Settings(BaseSettings):
     scout_interval_minutes: int = 20
     trend_radar_interval_minutes: int = 120
     auto_pipeline_enabled: bool = False
+    web_enable_pipeline_loop: bool = False
     auto_trends_enabled: bool = True
     web_enable_trends_loop: bool = False
     auto_scribe_enabled: bool = True
@@ -145,6 +147,7 @@ class Settings(BaseSettings):
     web_enable_event_reminders_loop: bool = False
     event_reminders_interval_minutes: int = 15
     time_integrity_cleanup_enabled: bool = False
+    web_enable_time_integrity_cleanup_loop: bool = False
     time_integrity_cleanup_interval_minutes: int = 15
     digital_team_auto_generation_enabled: bool = True
     web_enable_digital_generation_loop: bool = False
@@ -159,6 +162,7 @@ class Settings(BaseSettings):
     competitor_xray_hours_window: int = 48
     msi_enabled: bool = True
     msi_scheduler_enabled: bool = True
+    web_enable_msi_scheduler: bool = False
     msi_timezone: str = "Africa/Algiers"
     msi_daily_hour: int = 6
     msi_daily_minute: int = 0
@@ -169,6 +173,7 @@ class Settings(BaseSettings):
     msi_default_report_limit: int = 30
 
     ops_monitor_enabled: bool = True
+    web_enable_ops_monitor: bool = False
     ops_monitor_timezone: str = "Africa/Algiers"
     ops_monitor_daily_hour: int = 7
     ops_monitor_daily_minute: int = 15

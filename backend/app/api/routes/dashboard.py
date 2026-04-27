@@ -64,6 +64,33 @@ def _article_status_is_social_packaged():
     return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
 
 
+async def _safe_event_reminder_feed(limit: int) -> list[dict]:
+    try:
+        return await event_reminder_service.get_feed(limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dashboard_notifications_section_skipped", section="event_reminders", error=str(exc))
+        return []
+
+
+async def _safe_trend_payload() -> dict:
+    try:
+        return await cache_service.get_json("trends:last:DZ:all") or {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dashboard_notifications_section_skipped", section="trends", error=str(exc))
+        return {}
+
+
+async def _safe_published_monitor_payload(db: AsyncSession) -> dict | None:
+    try:
+        monitor_payload = await published_content_monitor_agent.latest()
+        if not monitor_payload:
+            monitor_payload = await _latest_published_monitor_from_jobs(db)
+        return monitor_payload
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dashboard_notifications_section_skipped", section="published_monitor", error=str(exc))
+        return None
+
+
 async def _digital_tables_ready(db: AsyncSession) -> bool:
     row = await db.execute(
         select(
@@ -1060,7 +1087,7 @@ async def dashboard_notifications(
                 }
             )
 
-    reminder_items = await event_reminder_service.get_feed(limit=20)
+    reminder_items = await _safe_event_reminder_feed(limit=20)
     for reminder in reminder_items:
         starts_at = reminder.get("starts_at")
         scope = reminder.get("scope")
@@ -1098,7 +1125,7 @@ async def dashboard_notifications(
         except Exception as exc:  # noqa: BLE001
             logger.warning("dashboard_digital_notifications_skipped", error=str(exc))
 
-    trend_payload = await cache_service.get_json("trends:last:DZ:all")
+    trend_payload = await _safe_trend_payload()
     seen_trends: set[str] = set()
     for idx, alert in enumerate((trend_payload or {}).get("alerts", [])[:12]):
         keyword = (alert.get("keyword", "") or "").strip()
@@ -1117,9 +1144,7 @@ async def dashboard_notifications(
             }
         )
 
-    monitor_payload = await published_content_monitor_agent.latest()
-    if not monitor_payload:
-        monitor_payload = await _latest_published_monitor_from_jobs(db)
+    monitor_payload = await _safe_published_monitor_payload(db)
     if monitor_payload:
         weak_items = int(monitor_payload.get("weak_items_count", 0))
         average_score = monitor_payload.get("average_score", 0)

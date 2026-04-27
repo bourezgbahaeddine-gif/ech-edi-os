@@ -423,20 +423,23 @@ async def lifespan(app: FastAPI):
     global _pipeline_task, _trends_task, _published_monitor_task, _competitor_xray_task, _event_reminders_task, _digital_generation_task, _time_integrity_cleanup_task, _archive_task
     _shutdown_event.clear()
     if settings.auto_pipeline_enabled:
-        scout_interval_minutes = max(1, int(settings.scout_interval_minutes))
-        newsroom_interval_seconds = scout_interval_minutes * 60
-        _pipeline_task = asyncio.create_task(
-            _periodic_loop(
-                "pipeline",
-                newsroom_interval_seconds,
-                _run_pipeline_once,
+        if settings.web_enable_pipeline_loop:
+            scout_interval_minutes = max(1, int(settings.scout_interval_minutes))
+            newsroom_interval_seconds = scout_interval_minutes * 60
+            _pipeline_task = asyncio.create_task(
+                _periodic_loop(
+                    "pipeline",
+                    newsroom_interval_seconds,
+                    _run_pipeline_once,
+                )
             )
-        )
-        logger.info(
-            "auto_pipeline_enabled",
-            scout_interval_minutes=scout_interval_minutes,
-            auto_scribe_enabled=settings.auto_scribe_enabled,
-        )
+            logger.info(
+                "auto_pipeline_enabled",
+                scout_interval_minutes=scout_interval_minutes,
+                auto_scribe_enabled=settings.auto_scribe_enabled,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="pipeline")
 
     if settings.auto_trends_enabled:
         if settings.web_enable_trends_loop:
@@ -527,39 +530,49 @@ async def lifespan(app: FastAPI):
             logger.info("web_loop_disabled", loop="digital_generation")
 
     if settings.time_integrity_cleanup_enabled:
-        _time_integrity_cleanup_task = asyncio.create_task(
-            _periodic_loop(
-                "time_integrity_cleanup",
-                max(300, settings.time_integrity_cleanup_interval_minutes * 60),
-                _run_time_integrity_cleanup_once,
+        if settings.web_enable_time_integrity_cleanup_loop:
+            _time_integrity_cleanup_task = asyncio.create_task(
+                _periodic_loop(
+                    "time_integrity_cleanup",
+                    max(300, settings.time_integrity_cleanup_interval_minutes * 60),
+                    _run_time_integrity_cleanup_once,
+                )
             )
-        )
-        logger.info(
-            "time_integrity_cleanup_enabled",
-            interval_minutes=settings.time_integrity_cleanup_interval_minutes,
-            max_age_hours=settings.scout_max_article_age_hours,
-        )
+            logger.info(
+                "time_integrity_cleanup_enabled",
+                interval_minutes=settings.time_integrity_cleanup_interval_minutes,
+                max_age_hours=settings.scout_max_article_age_hours,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="time_integrity_cleanup")
 
     if settings.echorouk_archive_enabled:
-        _archive_task = asyncio.create_task(
-            _periodic_loop(
-                "echorouk_archive",
-                max(300, settings.echorouk_archive_backfill_interval_minutes * 60),
-                _run_echorouk_archive_once,
+        if settings.web_enable_echorouk_archive_loop:
+            _archive_task = asyncio.create_task(
+                _periodic_loop(
+                    "echorouk_archive",
+                    max(300, settings.echorouk_archive_backfill_interval_minutes * 60),
+                    _run_echorouk_archive_once,
+                )
             )
-        )
-        logger.info(
-            "echorouk_archive_enabled",
-            backfill_interval_minutes=settings.echorouk_archive_backfill_interval_minutes,
-            refresh_interval_minutes=settings.echorouk_archive_refresh_interval_minutes,
-            listing_pages=settings.echorouk_archive_max_listing_pages_per_run,
-            article_pages=settings.echorouk_archive_max_articles_per_run,
-        )
+            logger.info(
+                "echorouk_archive_enabled",
+                backfill_interval_minutes=settings.echorouk_archive_backfill_interval_minutes,
+                refresh_interval_minutes=settings.echorouk_archive_refresh_interval_minutes,
+                listing_pages=settings.echorouk_archive_max_listing_pages_per_run,
+                article_pages=settings.echorouk_archive_max_articles_per_run,
+            )
+        else:
+            logger.info("web_loop_disabled", loop="echorouk_archive")
 
-    if settings.msi_enabled and settings.msi_scheduler_enabled:
+    if settings.msi_enabled and settings.msi_scheduler_enabled and settings.web_enable_msi_scheduler:
         start_msi_scheduler()
-    if settings.ops_monitor_enabled:
+    elif settings.msi_enabled and settings.msi_scheduler_enabled:
+        logger.info("web_loop_disabled", loop="msi_scheduler")
+    if settings.ops_monitor_enabled and settings.web_enable_ops_monitor:
         start_ops_scheduler()
+    elif settings.ops_monitor_enabled:
+        logger.info("web_loop_disabled", loop="ops_monitor")
 
     logger.info(
         "app_ready",

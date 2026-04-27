@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import select, desc
+from sqlalchemy import String, cast, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -67,12 +67,10 @@ async def rss_for_source(
     if status:
         try:
             selected_status = NewsStatus(status)
-            status_filter = (
-                selected_status.value
-                if selected_status == NewsStatus.SOCIAL_PACKAGED
-                else selected_status
-            )
-            query = query.where(Article.status == status_filter)
+            if selected_status == NewsStatus.SOCIAL_PACKAGED:
+                query = query.where(cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value)
+            else:
+                query = query.where(Article.status == selected_status)
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
     if category:

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from fastapi import Response
 
 from app.api.routes import auth as auth_route
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.models.user import UserRole
 from app.schemas.auth import LoginRequest
@@ -65,3 +66,4 @@ async def test_login_returns_access_token(monkeypatch):
     assert result.access_token
     assert result.token_type == "bearer"
     assert result.user.username == "editor"
+    assert f"{get_settings().auth_cookie_name}=" in response.headers.get("set-cookie", "")

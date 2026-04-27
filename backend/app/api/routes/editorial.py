@@ -8,7 +8,7 @@ from uuid import uuid4
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scribe import scribe_agent
@@ -50,6 +50,10 @@ from app.services.trend_signal_service import bump_keyword_interactions, extract
 logger = get_logger("api.editorial")
 settings = get_settings()
 router = APIRouter(prefix="/editorial", tags=["Editorial"])
+
+
+def _article_status_is_social_packaged():
+    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
 
 
 class _StrictRequestModel(BaseModel):
@@ -1983,12 +1987,9 @@ async def social_approved_feed(
     rows = await db.execute(
         select(Article)
         .where(
-            Article.status.in_(
-                [
-                    NewsStatus.READY_FOR_MANUAL_PUBLISH,
-                    NewsStatus.PUBLISHED,
-                    NewsStatus.SOCIAL_PACKAGED.value,
-                ]
+            or_(
+                Article.status.in_([NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.PUBLISHED]),
+                _article_status_is_social_packaged(),
             )
         )
         .order_by(Article.updated_at.desc(), Article.id.desc())

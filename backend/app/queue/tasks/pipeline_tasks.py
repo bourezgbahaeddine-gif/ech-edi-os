@@ -10,7 +10,7 @@ from uuid import UUID
 
 import structlog
 from celery import Task
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.agents.social_package_agent import social_package_agent
 from app.agents.router import router_agent
@@ -279,8 +279,21 @@ async def _run_social_package(job: JobRun) -> dict:
 
         status_updated = False
         if article.status == NewsStatus.PUBLISHED and variants:
-            article.status = NewsStatus.SOCIAL_PACKAGED.value
-            status_updated = True
+            status_result = await db.execute(
+                text(
+                    """
+                    UPDATE articles
+                    SET status = CAST(:status AS newsstatus), updated_at = :updated_at
+                    WHERE id = :article_id AND status = CAST('PUBLISHED' AS newsstatus)
+                    """
+                ),
+                {
+                    "status": NewsStatus.SOCIAL_PACKAGED.value,
+                    "updated_at": datetime.utcnow(),
+                    "article_id": article.id,
+                },
+            )
+            status_updated = (status_result.rowcount or 0) > 0
 
         await db.commit()
         result = {
