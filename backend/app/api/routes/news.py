@@ -11,7 +11,7 @@ import unicodedata
 from urllib.parse import urlparse, urlunparse
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, select, func, desc, and_, or_, update
+from sqlalchemy import String, case, cast, select, func, desc, and_, or_, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -212,6 +212,26 @@ def _db_news_status_value(status: NewsStatus | str) -> NewsStatus | str:
     if isinstance(status, NewsStatus):
         return status.value if status == NewsStatus.SOCIAL_PACKAGED else status
     return status
+
+
+def _article_status_is_social_packaged():
+    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
+
+
+def _article_status_in(statuses: list[NewsStatus | str]):
+    regular_statuses = []
+    includes_social_packaged = False
+    for status in statuses:
+        if status == NewsStatus.SOCIAL_PACKAGED or status == NewsStatus.SOCIAL_PACKAGED.value:
+            includes_social_packaged = True
+        else:
+            regular_statuses.append(status)
+
+    if includes_social_packaged and regular_statuses:
+        return or_(Article.status.in_(regular_statuses), _article_status_is_social_packaged())
+    if includes_social_packaged:
+        return _article_status_is_social_packaged()
+    return Article.status.in_(regular_statuses)
 
 
 def _parse_news_status_query(status: str) -> NewsStatus:
@@ -480,12 +500,10 @@ async def list_articles(
     if status:
         try:
             selected_status = _parse_news_status_query(status)
-            selected_status_filter = (
-                selected_status.value
-                if selected_status == NewsStatus.SOCIAL_PACKAGED
-                else selected_status
-            )
-            filters.append(Article.status == selected_status_filter)
+            if selected_status == NewsStatus.SOCIAL_PACKAGED:
+                filters.append(_article_status_is_social_packaged())
+            else:
+                filters.append(Article.status == selected_status)
             if selected_status not in {
                 NewsStatus.PUBLISHED,
                 NewsStatus.SOCIAL_PACKAGED,
@@ -500,7 +518,7 @@ async def list_articles(
         filters.append(
             or_(
                 Article.status == NewsStatus.PUBLISHED,
-                Article.status == NewsStatus.SOCIAL_PACKAGED.value,
+                _article_status_is_social_packaged(),
                 func.coalesce(Article.published_at, Article.crawled_at) >= freshness_cutoff,
             )
         )
@@ -565,7 +583,7 @@ async def priority_queue(
     allowed_statuses = [_db_news_status_value(item) for item in _priority_queue_statuses(include_published)]
 
     filters = [
-        Article.status.in_(allowed_statuses),
+        _article_status_in(allowed_statuses),
         Article.status != NewsStatus.ARCHIVED,
         func.coalesce(Article.created_at, Article.crawled_at) >= cutoff,
     ]
@@ -751,7 +769,10 @@ async def semantic_search(
     if status:
         try:
             selected_status = _parse_news_status_query(status)
-            stmt = stmt.where(Article.status == _db_news_status_value(selected_status))
+            if selected_status == NewsStatus.SOCIAL_PACKAGED:
+                stmt = stmt.where(_article_status_is_social_packaged())
+            else:
+                stmt = stmt.where(Article.status == selected_status)
         except ValueError:
             raise HTTPException(400, f"Invalid status: {status}")
     else:

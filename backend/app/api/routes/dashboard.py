@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, func, and_, update, desc, case, text
+from sqlalchemy import String, select, func, and_, or_, update, desc, case, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.rbac import require_roles
@@ -58,6 +58,10 @@ router = APIRouter(
     dependencies=[Depends(require_roles(*DASHBOARD_NEWSROOM_ROLES))],
 )
 settings = get_settings()
+
+
+def _article_status_is_social_packaged():
+    return cast(Article.status, String) == NewsStatus.SOCIAL_PACKAGED.value
 
 
 async def _digital_tables_ready(db: AsyncSession) -> bool:
@@ -120,7 +124,7 @@ async def get_dashboard_stats(
     )
     published = await db.execute(
         select(func.count(Article.id)).where(
-            Article.status.in_([NewsStatus.PUBLISHED.value, NewsStatus.SOCIAL_PACKAGED.value])
+            or_(Article.status == NewsStatus.PUBLISHED, _article_status_is_social_packaged())
         )
     )
     breaking = await db.execute(
@@ -1033,12 +1037,9 @@ async def dashboard_notifications(
             select(Article)
             .where(
                 and_(
-                    Article.status.in_(
-                        [
-                            NewsStatus.READY_FOR_MANUAL_PUBLISH.value,
-                            NewsStatus.PUBLISHED.value,
-                            NewsStatus.SOCIAL_PACKAGED.value,
-                        ]
+                    or_(
+                        Article.status.in_([NewsStatus.READY_FOR_MANUAL_PUBLISH, NewsStatus.PUBLISHED]),
+                        _article_status_is_social_packaged(),
                     ),
                     Article.updated_at >= now - timedelta(hours=24),
                 )
