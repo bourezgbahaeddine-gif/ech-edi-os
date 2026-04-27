@@ -139,7 +139,7 @@ async def _assert_director_role_assignment_allowed(
     )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨Ø§Øª Ù…Ø¯ÙŠØ± Ø£Ùˆ Ø§Ù„ØªØ±Ù‚ÙŠØ© Ø¥Ù„Ù‰ Ù…Ø¯ÙŠØ± Ù…Ø¹Ø·Ù„Ø© Ø§ÙØªØ±Ø§Ø¶ÙŠÙ‹Ø§",
+        detail="إنشاء حسابات مدير أو الترقية إلى مدير معطلة افتراضيًا",
     )
 
 
@@ -211,7 +211,7 @@ async def get_current_user(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ø±Ù…Ø² Ø§Ù„Ù…ØµØ§Ø¯Ù‚Ø© ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ù…Ù†ØªÙ‡ÙŠ Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ©",
+            detail="رمز المصادقة غير صالح أو منتهي الصلاحية",
         )
 
     payload = decode_access_token(token)
